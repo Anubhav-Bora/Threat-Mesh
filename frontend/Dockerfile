@@ -16,7 +16,7 @@ ARG VITE_DEMO_MODE=false
 ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 RUN npm run build
 
-FROM nginx:1.30.4-alpine
+FROM nginx:1.31.4-alpine
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/security-headers.conf /etc/nginx/snippets/threatmesh-security.conf
 RUN nginx -t
