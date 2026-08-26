@@ -1,6 +1,6 @@
 # check=skip=SecretsUsedInArgOrEnv
 # VITE_* values are intentionally compiled into the public browser bundle.
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY package*.json ./
