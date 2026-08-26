@@ -1,0 +1,106 @@
+name: threatmesh
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-threatmesh}
+      POSTGRES_USER: ${POSTGRES_USER:-threatmesh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-threatmesh}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - threatmesh
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://threatmesh:threatmesh@db:5432/threatmesh}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,backend}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      PUBLIC_RATE_LIMIT_PER_MINUTE: ${PUBLIC_RATE_LIMIT_PER_MINUTE:-120}
+      AI_RATE_LIMIT_PER_MINUTE: ${AI_RATE_LIMIT_PER_MINUTE:-12}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      RUN_JOBS_ON_STARTUP: ${RUN_JOBS_ON_STARTUP:-false}
+      AUTO_CREATE_SCHEMA: ${AUTO_CREATE_SCHEMA:-false}
+      LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-75}
+      ABUSECH_AUTH_KEY: ${ABUSECH_AUTH_KEY:-}
+      FEED_MAX_RESPONSE_BYTES: ${FEED_MAX_RESPONSE_BYTES:-8388608}
+      FEED_SYNC_HOURS: ${FEED_SYNC_HOURS:-3}
+      ENRICHMENT_INTERVAL_MINUTES: ${ENRICHMENT_INTERVAL_MINUTES:-15}
+      ANALYSIS_INTERVAL_HOURS: ${ANALYSIS_INTERVAL_HOURS:-6}
+      REPORT_DAY_OF_WEEK: ${REPORT_DAY_OF_WEEK:-mon}
+      REPORT_HOUR_UTC: ${REPORT_HOUR_UTC:-6}
+      GEOLOCATION_ENABLED: ${GEOLOCATION_ENABLED:-true}
+      GEOLOCATION_REQUESTS_PER_MINUTE: ${GEOLOCATION_REQUESTS_PER_MINUTE:-40}
+    volumes:
+      - ./reports:/app/reports
+      - ./rules:/app/rules
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0
+        --port 8000 --proxy-headers
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - threatmesh
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+        VITE_ARCGIS_API_KEY: ${VITE_ARCGIS_API_KEY:-}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-false}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - threatmesh
+
+volumes:
+  postgres_data:
+
+networks:
+  threatmesh:
+    driver: bridge
