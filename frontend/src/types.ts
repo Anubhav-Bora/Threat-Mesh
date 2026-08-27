@@ -146,6 +146,7 @@ export interface FeedRun {
   inserted: number;
   updated: number;
   rejected: number;
+  duplicatesCollapsed: number;
   error?: string;
 }
 

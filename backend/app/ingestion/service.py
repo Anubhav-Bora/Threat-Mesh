@@ -26,6 +26,7 @@ class FeedSyncResult:
     inserted: int = 0
     updated: int = 0
     rejected: int = 0
+    duplicates_collapsed: int = 0
     skipped: bool = False
     error: str | None = None
 
@@ -95,6 +96,7 @@ class IngestionService:
             "feeds": [asdict(result) for result in results],
             "inserted": sum(result.inserted for result in results),
             "updated": sum(result.updated for result in results),
+            "duplicates_collapsed": sum(result.duplicates_collapsed for result in results),
             "failed": sum(1 for result in results if result.status is FeedRunStatus.FAILED),
             "skipped": sum(1 for result in results if result.skipped),
         }
@@ -125,9 +127,19 @@ class IngestionService:
                         indicator.source_feed,
                     )
                     previous = unique_indicators.get(key)
-                    if previous is None or indicator.last_seen >= previous.last_seen:
+                    if previous is None:
                         unique_indicators[key] = indicator
-                result.rejected += len(indicators) - len(unique_indicators)
+                    else:
+                        latest = (
+                            indicator if indicator.last_seen >= previous.last_seen else previous
+                        )
+                        unique_indicators[key] = latest.model_copy(
+                            update={
+                                "first_seen": min(previous.first_seen, indicator.first_seen),
+                                "last_seen": max(previous.last_seen, indicator.last_seen),
+                            }
+                        )
+                result.duplicates_collapsed = len(indicators) - len(unique_indicators)
                 for indicator in unique_indicators.values():
                     inserted = await self._upsert(session, indicator)
                     if inserted:
@@ -154,6 +166,8 @@ class IngestionService:
                 run.error = result.error
             except Exception as exc:
                 await session.rollback()
+                result.inserted = 0
+                result.updated = 0
                 result.error = str(exc)[:1000]
                 logger.exception("Feed sync failed", extra={"feed": connector.name})
                 run = await session.get(FeedRun, run_id)
@@ -162,6 +176,10 @@ class IngestionService:
                     session.add(run)
                 run.status = FeedRunStatus.FAILED
                 result.status = FeedRunStatus.FAILED
+                run.received_count = result.received
+                run.inserted_count = 0
+                run.updated_count = 0
+                run.rejected_count = result.rejected
                 run.error = result.error
             finally:
                 run.completed_at = datetime.now(UTC)

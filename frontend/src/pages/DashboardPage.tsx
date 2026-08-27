@@ -132,7 +132,7 @@ export default function DashboardPage() {
         timestamp: run.completedAt ?? run.startedAt,
         kind: "ingested",
         title: `${run.feed} ${run.status}`,
-        detail: `${run.received} received · ${run.inserted} new · ${run.updated} updated`,
+        detail: `${run.received} received · ${run.inserted} new · ${run.updated} updated${run.duplicatesCollapsed > 0 ? ` · ${run.duplicatesCollapsed} deduplicated` : ""}`,
         severity:
           run.status === "failed"
             ? "critical"

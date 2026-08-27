@@ -492,6 +492,9 @@ function normalizeFeedRun(raw: any, index: number): FeedRun {
     inserted: safeNumber(get(raw, "inserted", "inserted_count")),
     updated: safeNumber(get(raw, "updated", "updated_count")),
     rejected: safeNumber(get(raw, "rejected", "rejected_count")),
+    duplicatesCollapsed: safeNumber(
+      get(raw, "duplicatesCollapsed", "duplicates_collapsed"),
+    ),
     error: safeString(get(raw, "error")) || undefined,
   };
 }

@@ -11,7 +11,7 @@ from app.detection_rules import DetectionRuleService
 from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.ingestion import IngestionService
-from app.models import FeedRun
+from app.models import FeedRun, FeedRunStatus
 from app.scoring import ConfidenceService
 
 router = APIRouter(tags=["pipeline operations"])
@@ -50,6 +50,12 @@ async def feed_status(session: SessionDep) -> list[dict[str, object]]:
             "inserted": run.inserted_count,
             "updated": run.updated_count,
             "rejected": run.rejected_count,
+            "duplicates_collapsed": max(
+                0,
+                run.received_count - run.inserted_count - run.updated_count - run.rejected_count,
+            )
+            if run.status is not FeedRunStatus.FAILED
+            else 0,
             "error": run.error,
         }
         for run in runs

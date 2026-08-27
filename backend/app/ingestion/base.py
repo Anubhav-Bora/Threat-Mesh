@@ -73,7 +73,11 @@ def parse_datetime(
         except (OSError, OverflowError, ValueError) as exc:
             raise ValueError("invalid feed timestamp") from exc
     else:
-        text = str(value).strip().replace("Z", "+00:00")
+        text = str(value).strip()
+        if text.endswith(" UTC"):
+            text = f"{text[:-4]}+00:00"
+        elif text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
         formats = (
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%dT%H:%M:%S",

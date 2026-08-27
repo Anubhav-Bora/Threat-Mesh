@@ -379,6 +379,7 @@ describe("FastAPI client contract", () => {
           inserted: 12,
           updated: 44,
           rejected: 2,
+          duplicates_collapsed: 62,
           error: "One page timed out",
         },
       ]),
@@ -389,6 +390,7 @@ describe("FastAPI client contract", () => {
       feed: "urlhaus",
       status: "partial",
       inserted: 12,
+      duplicatesCollapsed: 62,
       error: "One page timed out",
     });
   });

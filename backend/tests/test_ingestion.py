@@ -34,7 +34,8 @@ def test_feed_parsers_normalize_and_preserve_ports() -> None:
                     "ioc": "8.8.8.8:8443",
                     "ioc_type": "ip:port",
                     "malware_printable": "Cobalt Strike",
-                    "first_seen": "2026-08-20 12:00:00",
+                    "first_seen": "2026-08-20 12:00:00 UTC",
+                    "last_seen": "2026-08-20 13:00:00 UTC",
                     "confidence_level": 90,
                 }
             ],
@@ -61,7 +62,8 @@ def test_feed_parsers_normalize_and_preserve_ports() -> None:
             "urls": [
                 {
                     "url": "HTTPS://Example.TEST/dropper#ignored",
-                    "date_added": "2026-08-20 12:00:00",
+                    "date_added": "2026-08-20 12:00:00 UTC",
+                    "last_online": "2026-08-20 13:00:00 UTC",
                     "tags": ["emotet", "exe"],
                 }
             ]
@@ -118,6 +120,16 @@ def test_connectors_reject_malformed_nonempty_timestamps(parser, payload) -> Non
     assert parser(payload) == []
     with pytest.raises(ValueError, match="timestamp"):
         parse_datetime("not-a-date")
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["2026-08-20 12:00:00 UTC", "2026-08-20T12:00:00Z"],
+)
+def test_feed_timestamp_accepts_explicit_utc_suffixes(value: str) -> None:
+    assert parse_datetime(value, now=datetime(2026, 8, 21, tzinfo=UTC)) == datetime(
+        2026, 8, 20, 12, tzinfo=UTC
+    )
 
 
 def test_feed_timestamp_rejects_excessive_future_clock_skew() -> None:
@@ -261,7 +273,7 @@ class FakeConnector:
 
     async def fetch(self) -> list[NormalizedIOC]:
         now = datetime.now(UTC)
-        indicator = NormalizedIOC(
+        latest = NormalizedIOC(
             ioc_value="8.8.4.4",
             ioc_type=IOCType.IP,
             port=53,
@@ -271,7 +283,14 @@ class FakeConnector:
             source_feed=self.name,
             raw_json={"port": 53},
         )
-        return [indicator, indicator]
+        earliest = latest.model_copy(
+            update={
+                "malware_family": "Earlier attribution",
+                "first_seen": now - timedelta(hours=2),
+                "last_seen": now - timedelta(hours=1),
+            }
+        )
+        return [earliest, latest]
 
 
 class BatchConnector:
@@ -371,13 +390,18 @@ async def test_feed_upsert_is_idempotent(app, settings) -> None:
     first = await service.sync_all()
     second = await service.sync_all()
     assert first["inserted"] == 1
-    assert first["feeds"][0]["rejected"] == 1
+    assert first["feeds"][0]["rejected"] == 0
+    assert first["feeds"][0]["duplicates_collapsed"] == 1
+    assert first["feeds"][0]["status"] is FeedRunStatus.SUCCEEDED
+    assert first["duplicates_collapsed"] == 1
     assert second["updated"] == 1
     async with app.state.database.session_factory() as session:
         assert await session.scalar(select(func.count(IOC.id))) == 1
         ioc = await session.scalar(select(IOC))
         assert ioc.port == 53
         assert ioc.indicator_key == "8.8.4.4:53"
+        assert ioc.first_seen < ioc.last_seen
+        assert ioc.malware_family == "Emotet"
         assert ioc.is_demo is False
 
 
@@ -412,6 +436,51 @@ async def test_feed_identity_includes_declared_ioc_type(app, settings) -> None:
         rows = list((await session.scalars(select(IOC))).all())
     assert {row.ioc_type for row in rows} == {IOCType.DOMAIN, IOCType.HASH}
     assert {row.indicator_key for row in rows} == {lexical_value}
+
+
+@pytest.mark.asyncio
+async def test_failed_feed_transaction_resets_rolled_back_write_counts(
+    app, settings, monkeypatch
+) -> None:
+    now = datetime.now(UTC)
+    indicators = [
+        NormalizedIOC(
+            ioc_value=value,
+            ioc_type=IOCType.IP,
+            first_seen=now - timedelta(hours=1),
+            last_seen=now,
+            source_feed="failing-feed",
+        )
+        for value in ("8.8.8.8", "1.1.1.1")
+    ]
+    service = IngestionService(
+        app.state.database.session_factory,
+        settings,
+        connectors=[
+            BatchConnector(
+                "failing-feed",
+                FeedBatch(indicators=indicators, attempted=2, rejected=0),
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        service,
+        "_upsert",
+        AsyncMock(side_effect=[True, RuntimeError("simulated database failure")]),
+    )
+
+    result = await service.sync_all()
+
+    assert result["failed"] == 1
+    assert result["inserted"] == 0
+    assert result["updated"] == 0
+    assert result["feeds"][0]["received"] == 2
+    async with app.state.database.session_factory() as session:
+        assert await session.scalar(select(func.count(IOC.id))) == 0
+        run = await session.scalar(select(FeedRun).where(FeedRun.feed_name == "failing-feed"))
+        assert run is not None
+        assert run.status is FeedRunStatus.FAILED
+        assert (run.received_count, run.inserted_count, run.updated_count) == (2, 0, 0)
 
 
 @pytest.mark.asyncio
