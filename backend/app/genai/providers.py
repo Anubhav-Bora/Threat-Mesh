@@ -69,16 +69,22 @@ class GeminiProvider(LLMProvider):
                 return LLMResponse(text=text, provider=self.name, model=self.model)
             except errors.APIError as exc:
                 last_error = exc
-                if exc.code != 429 or attempt == 2:
+                if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                    break
+                await asyncio.sleep(1.0 * (2**attempt))
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt == 2:
                     break
                 await asyncio.sleep(1.0 * (2**attempt))
             finally:
                 client.close()
+        reason = str(last_error).strip() or type(last_error).__name__
         raise AppError(
             502,
             "llm_provider_error",
             "Gemini could not generate a response",
-            details={"reason": str(last_error)[:300]},
+            details={"reason": reason[:300]},
         )
 
 
