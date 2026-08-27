@@ -89,10 +89,12 @@ export default function AssistantPage() {
     },
   });
 
-  useEffect(
-    () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
-    [messages, ask.isPending],
-  );
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }, [messages, ask.isPending]);
 
   const submit = (event?: FormEvent, suggested?: string) => {
     event?.preventDefault();
