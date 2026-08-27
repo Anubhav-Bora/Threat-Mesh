@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -325,6 +327,40 @@ async def test_feed_response_limit_rejects_declared_and_streamed_overflow() -> N
         with pytest.raises(FeedError, match="10-byte limit"):
             await connector.request()
     assert chunked_body.closed is True
+
+
+@pytest.mark.asyncio
+async def test_feed_response_does_not_decode_gzip_twice() -> None:
+    payload = [
+        {
+            "ip_address": "8.8.8.8",
+            "port": 443,
+            "first_seen": "2026-08-20 12:00:00",
+            "last_online": "2026-08-20 13:00:00",
+            "malware": "test-family",
+        }
+    ]
+    compressed = gzip.compress(json.dumps(payload).encode())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Encoding": "gzip",
+                "Content-Type": "application/json",
+                "Content-Length": str(len(compressed)),
+            },
+            content=compressed,
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        batch = await FeodoConnector(client, "https://feed.invalid/data").fetch()
+
+    assert batch.attempted == 1
+    assert batch.rejected == 0
+    assert batch.indicators[0].ioc_value == "8.8.8.8"
+    assert batch.indicators[0].port == 443
 
 
 @pytest.mark.asyncio

@@ -246,9 +246,17 @@ class FeedConnector(ABC):
                                 f"{self.max_response_bytes}-byte limit"
                             )
                         content.extend(chunk)
+                    # ``aiter_bytes`` yields the decoded representation. Reusing the
+                    # upstream encoding metadata would make the reconstructed response
+                    # attempt to decode the already-decoded body a second time.
+                    decoded_headers = [
+                        (key, value)
+                        for key, value in response.headers.multi_items()
+                        if key.lower() not in {"content-encoding", "content-length"}
+                    ]
                     return httpx.Response(
                         response.status_code,
-                        headers=response.headers,
+                        headers=decoded_headers,
                         content=bytes(content),
                         request=response.request,
                     )
