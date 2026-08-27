@@ -63,10 +63,13 @@ export default function ReportsPage() {
           description="Complete an ingestion period, then run the report generator with Gemini or the local Ollama provider. Every draft should be reviewed before publication."
         />
         <div className="operator-instruction">
-          <strong>PowerShell · authenticated operator request</strong>
+          <strong>PowerShell command</strong>
           <code>{REPORT_COMMAND}</code>
           <CopyButton text={REPORT_COMMAND} label="Copy command" />
-          <span>Paste the root .env value when PowerShell prompts.</span>
+          <span>
+            Run this from the project computer and enter the ADMIN_API_KEY from
+            the root .env file when prompted.
+          </span>
         </div>
       </section>
     );
@@ -85,7 +88,7 @@ export default function ReportsPage() {
             onClick={() => setShowNew(true)}
           >
             <Terminal size={15} />
-            Operator guide
+            Generate report
           </button>
         </div>
         <div className="report-list">
@@ -296,22 +299,27 @@ export default function ReportsPage() {
             className="modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Report generation operator guide"
+            aria-label="Generate a report securely"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <span className="modal__icon">
               <Sparkles size={24} />
             </span>
-            <h2>Generate from an operator shell</h2>
+            <h2>Generate a report securely</h2>
             <p>
-              Report generation is an authenticated backend operation. The
-              browser intentionally does not store or submit the admin key.
+              Report generation requires the administrator API key. For
+              security, ThreatMesh does not store this key in your browser. Run
+              the command below from the project computer and enter the
+              ADMIN_API_KEY from the root .env file when prompted.
             </p>
             <div className="operator-instruction">
-              <strong>PowerShell · authenticated operator request</strong>
+              <strong>PowerShell command</strong>
               <code>{REPORT_COMMAND}</code>
               <CopyButton text={REPORT_COMMAND} label="Copy command" />
-              <span>Paste the root .env value when PowerShell prompts.</span>
+              <span>
+                After the command finishes, close this window and refresh the
+                report list.
+              </span>
             </div>
             <div className="modal__notice">
               <LockKeyhole size={15} />

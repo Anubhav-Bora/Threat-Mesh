@@ -160,12 +160,12 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/api/v1/feeds/sync' -H
           onClick={() => setShowOperatorAction((value) => !value)}
         >
           <Terminal size={16} />
-          Operator sync instructions
+          Sync feeds manually
         </button>
       )}
       {showOperatorAction && (
         <div className="operator-instruction">
-          <strong>PowerShell · trusted operator shell</strong>
+          <strong>PowerShell command</strong>
           <code>{syncCommand}</code>
           <CopyButton text={syncCommand} label="Copy command" />
           <span>

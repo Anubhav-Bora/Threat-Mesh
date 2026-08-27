@@ -64,10 +64,14 @@ export default function RulesPage() {
           description="Generate rules from high-confidence, well-tagged observations. ThreatMesh treats every generated rule as a candidate requiring analyst validation before operational use."
         />
         <div className="operator-instruction">
-          <strong>PowerShell · authenticated operator request</strong>
+          <strong>PowerShell command</strong>
           <code>{RULE_GENERATION_COMMAND}</code>
           <CopyButton text={RULE_GENERATION_COMMAND} label="Copy command" />
-          <span>Paste the root .env value when PowerShell prompts.</span>
+          <span>
+            Run this from the project computer and enter the ADMIN_API_KEY from
+            the root .env file when prompted. Refresh this page after the
+            command finishes.
+          </span>
         </div>
       </section>
     );
@@ -122,7 +126,7 @@ export default function RulesPage() {
               className="button button--primary button--small"
             >
               <ShieldCheck size={15} />
-              Operator setup
+              Data & integrations
             </Link>
           </div>
           <div className="rule-filters">
