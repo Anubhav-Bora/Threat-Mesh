@@ -142,6 +142,7 @@ class EnrichmentService:
                     .limit(limit or self.settings.enrichment_batch_size)
                 )
                 indicators = list((await session.scalars(query)).all())
+                batch_results: dict[str, GeoResult] = {}
                 for ioc in indicators:
                     stats["processed"] += 1
                     ip_address = await indicator_ip(ioc)
@@ -152,43 +153,50 @@ class EnrichmentService:
                             literal_address = str(ipaddress.ip_address(ioc.ioc_value))
                         except ValueError:
                             literal_address = ioc.ioc_value
-                        cached = await session.get(GeoCache, literal_address)
-                        await self._store_cache(
-                            session,
-                            GeoResult(
+                        if literal_address not in batch_results:
+                            cached = await session.get(GeoCache, literal_address)
+                            result = GeoResult(
                                 ip_address=literal_address,
                                 successful=False,
                                 failure_reason="non-public or invalid literal IP address",
-                            ),
-                            cached,
-                            fetched_at=now,
-                        )
+                            )
+                            await self._store_cache(session, result, cached, fetched_at=now)
+                            batch_results[literal_address] = result
+                        else:
+                            stats["cached"] += 1
                         stats["skipped"] += 1
                         continue
-                    cached = await session.get(GeoCache, ip_address)
-                    store_result = False
-                    if cached and _as_utc(cached.fetched_at) >= stale_before:
-                        result = _result_from_cache(cached)
+                    if ip_address in batch_results:
+                        result = batch_results[ip_address]
                         stats["cached"] += 1
                     else:
-                        try:
-                            result = await provider.lookup(ip_address)
-                        except (httpx.HTTPError, ValueError) as exc:
+                        cached = await session.get(GeoCache, ip_address)
+                        store_result = False
+                        if cached and _as_utc(cached.fetched_at) >= stale_before:
+                            result = _result_from_cache(cached)
+                            stats["cached"] += 1
+                        else:
+                            try:
+                                result = await provider.lookup(ip_address)
+                            except (httpx.HTTPError, ValueError) as exc:
+                                result = GeoResult(
+                                    ip_address=ip_address,
+                                    successful=False,
+                                    failure_reason=str(exc)[:255],
+                                )
+                            store_result = True
+                        if result.successful and (
+                            result.latitude is None or result.longitude is None
+                        ):
                             result = GeoResult(
                                 ip_address=ip_address,
                                 successful=False,
-                                failure_reason=str(exc)[:255],
+                                failure_reason="provider returned no coordinates",
                             )
-                        store_result = True
-                    if result.successful and (result.latitude is None or result.longitude is None):
-                        result = GeoResult(
-                            ip_address=ip_address,
-                            successful=False,
-                            failure_reason="provider returned no coordinates",
-                        )
-                        store_result = True
-                    if store_result:
-                        await self._store_cache(session, result, cached, fetched_at=now)
+                            store_result = True
+                        if store_result:
+                            await self._store_cache(session, result, cached, fetched_at=now)
+                        batch_results[ip_address] = result
                     if result.successful:
                         self._apply(ioc, result)
                         stats["enriched"] += 1

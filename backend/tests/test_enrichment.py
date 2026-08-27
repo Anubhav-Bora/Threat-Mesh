@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.enrichment import EnrichmentService, GeoResult
 from app.models import IOC, GeoCache, IOCType
@@ -71,6 +71,31 @@ async def test_enrichment_only_queries_literal_ip_rows(app, settings) -> None:
         domain = await session.scalar(select(IOC).where(IOC.ioc_type == IOCType.DOMAIN))
         assert ip_ioc.location == "SRID=4326;POINT(-122.0775 37.4056)"
         assert domain.latitude is None
+
+
+@pytest.mark.asyncio
+async def test_enrichment_reuses_results_for_duplicate_ips_in_one_batch(app, settings) -> None:
+    async with app.state.database.session_factory() as session:
+        session.add(make_ioc(value="8.8.8.8", source="urlhaus"))
+        session.add(make_ioc(value="8.8.8.8", source="threatfox"))
+        await session.commit()
+
+    provider = FakeGeoProvider()
+    service = EnrichmentService(app.state.database.session_factory, settings, provider=provider)
+    result = await service.enrich_pending()
+
+    assert result == {
+        "processed": 2,
+        "enriched": 2,
+        "cached": 1,
+        "skipped": 0,
+        "failed": 0,
+    }
+    assert provider.calls == ["8.8.8.8"]
+    async with app.state.database.session_factory() as session:
+        assert await session.scalar(select(func.count(GeoCache.ip_address))) == 1
+        indicators = list((await session.scalars(select(IOC))).all())
+        assert all(ioc.latitude == 37.4056 for ioc in indicators)
 
 
 @pytest.mark.asyncio
