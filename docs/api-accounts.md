@@ -67,9 +67,9 @@ into prose.
    an older standard key; Google has announced that standard keys will stop
    working for this API in September 2026.
 3. Put the value in backend-only `GEMINI_API_KEY`.
-4. Set `LLM_PROVIDER=gemini` and leave `GEMINI_MODEL=gemini-2.5-flash` for the
-   project's stable free-tier default, or choose another model after checking
-   its current pricing.
+4. Set `LLM_PROVIDER=gemini` and leave `GEMINI_MODEL=gemini-3.5-flash-lite` for the
+   project's current default, or choose another generally available model after
+   checking its current availability and pricing.
 5. Restart the backend.
 
 Do not prefix this variable with `VITE_` or otherwise expose it to the browser.
