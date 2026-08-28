@@ -2433,12 +2433,68 @@ input[type="range"] {
   max-width: 260px;
   flex: 0 1 260px;
 }
+.matrix-controls {
+  display: flex;
+  min-width: min(100%, 430px);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.observed-toggle {
+  display: inline-flex;
+  min-height: 31px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  background: #0d141d;
+  font-size: 7.5px;
+  cursor: pointer;
+}
+.observed-toggle.is-active {
+  color: var(--teal);
+  border-color: rgb(110 231 216 / 26%);
+  background: rgb(110 231 216 / 7%);
+}
 .attack-matrix {
   display: flex;
   min-height: 490px;
   gap: 7px;
   overflow-x: auto;
   padding: 10px;
+}
+.matrix-empty {
+  display: grid;
+  width: 100%;
+  min-height: 360px;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  color: var(--muted);
+  text-align: center;
+}
+.matrix-empty svg {
+  color: var(--violet-soft);
+}
+.matrix-empty strong {
+  color: var(--text-2);
+  font-size: 10px;
+}
+.matrix-empty span {
+  font-size: 8px;
+}
+.matrix-empty button {
+  margin-top: 4px;
+  padding: 6px 9px;
+  border: 1px solid rgb(139 92 246 / 28%);
+  border-radius: 6px;
+  color: var(--violet-soft);
+  background: rgb(139 92 246 / 8%);
+  font-size: 8px;
+  cursor: pointer;
 }
 .tactic-column {
   width: 128px;
@@ -3807,7 +3863,8 @@ input[type="range"] {
   flex-wrap: wrap;
   gap: 5px;
 }
-.citation-block button {
+.citation-block button,
+.citation-block .citation-chip {
   display: inline-flex;
   max-width: 220px;
   align-items: center;
@@ -3818,6 +3875,8 @@ input[type="range"] {
   color: #94a6b8;
   background: #0d151e;
   font-size: 7.5px;
+}
+.citation-block button {
   cursor: pointer;
 }
 .citation-block button:hover {
@@ -3834,6 +3893,32 @@ input[type="range"] {
   background: rgb(103 183 247 / 8%);
   font: normal 6px monospace;
 }
+.inline-citation {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  margin: 0 2px;
+  padding: 0 4px;
+  place-items: center;
+  border: 1px solid rgb(103 183 247 / 32%);
+  border-radius: 5px;
+  color: #9ed7ff;
+  background: rgb(103 183 247 / 10%);
+  font: 650 7px/1 monospace;
+  vertical-align: 0.18em;
+  cursor: pointer;
+}
+.inline-citation:hover {
+  border-color: rgb(110 231 216 / 52%);
+  color: #d8fffa;
+  background: rgb(110 231 216 / 12%);
+}
+.inline-citation--static {
+  color: #b3aaff;
+  border-color: rgb(139 92 246 / 35%);
+  background: rgb(139 92 246 / 10%);
+  cursor: help;
+}
 .answer-meta {
   display: flex;
   gap: 12px;
@@ -3848,6 +3933,14 @@ input[type="range"] {
 }
 .answer-meta svg {
   color: var(--green);
+}
+.answer-meta .citation-status--partial,
+.answer-meta .citation-status--absent {
+  color: #9b8970;
+}
+.answer-meta .citation-status--partial svg,
+.answer-meta .citation-status--absent svg {
+  color: var(--amber);
 }
 .retrieval-progress {
   display: flex;
@@ -4703,6 +4796,14 @@ select {
     max-width: none;
     flex-basis: auto;
   }
+  .matrix-controls {
+    min-width: 0;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .observed-toggle {
+    width: fit-content;
+  }
   .attack-sidebar {
     grid-template-columns: 1fr;
   }
@@ -4801,6 +4902,14 @@ select {
   .segment-control button {
     flex: 1;
     min-width: 0;
+  }
+  .suggestion-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .suggestion-row button {
+    flex: 1 1 calc(50% - 5px);
+    text-align: left;
   }
   .campaign-hero {
     padding: 14px;

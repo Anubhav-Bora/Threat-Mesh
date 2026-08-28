@@ -24,10 +24,24 @@ export const useIndicators = (
     enabled,
     ...options,
   });
+export const useIndicator = (id?: string) =>
+  useQuery({
+    queryKey: ["indicator", id],
+    queryFn: () => threatApi.indicator(id!),
+    enabled: Boolean(id),
+    ...options,
+  });
 export const useCampaigns = () =>
   useQuery({
     queryKey: ["campaigns"],
     queryFn: threatApi.campaigns,
+    ...options,
+  });
+export const useCampaign = (id?: string | null) =>
+  useQuery({
+    queryKey: ["campaign", id],
+    queryFn: () => threatApi.campaign(id!),
+    enabled: Boolean(id),
     ...options,
   });
 export const useTechniques = () =>

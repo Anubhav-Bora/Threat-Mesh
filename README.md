@@ -30,7 +30,7 @@ change confidence, technique mapping, clustering, or response decisions.
 | Intelligence analysis | Explainable confidence scoring, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
 | Detection engineering | Stable Sigma and Suricata templates with provenance and mandatory human-review labeling |
 | Analyst reporting | Evidence-bounded weekly CTI reports through configurable Gemini, local Ollama, or no-LLM operation |
-| Natural-language access | Retrieval-first assistant that answers from a bounded database evidence set rather than unrestricted text-to-SQL |
+| Natural-language access | Retrieval-first assistant with server-validated evidence IDs, forged-citation rejection, and exact record pivots instead of unrestricted text-to-SQL |
 | Operations | APScheduler jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
 | Portfolio UX | Responsive React/TypeScript console with overview, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |
 
@@ -210,6 +210,9 @@ rules/                 versionable detection artifacts
 - Confidence is a queue-prioritization heuristic, not a probability or verdict.
 - Generated rules and prose require analyst review and are never deployed
   automatically.
+- Assistant citation validation proves that a displayed evidence ID belonged to
+  that request's retrieved fact set; it does not prove that every generated
+  sentence is semantically supported.
 - The free ip-api service is HTTP-only and non-commercial. Use a licensed HTTPS
   provider or offline database for commercial or higher-assurance deployment.
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -9,9 +9,10 @@ import {
   Filter,
   Search,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { IndicatorDetail } from "../components/IndicatorDetail";
 import { Badge, Confidence, EmptyState, SkeletonRows } from "../components/UI";
-import { useIndicators } from "../hooks/useThreatData";
+import { useIndicator, useIndicators } from "../hooks/useThreatData";
 import type { Indicator } from "../types";
 import { rowsToCsv } from "../utils/csv";
 import { downloadText, formatDate, formatRelative } from "../utils/format";
@@ -20,7 +21,10 @@ type SortKey = "lastSeen" | "confidence" | "malwareFamily" | "country";
 const pageSize = 10;
 
 export default function IndicatorsPage() {
+  const [searchParams] = useSearchParams();
+  const citedIndicatorId = searchParams.get("ioc") ?? undefined;
   const query = useIndicators();
+  const citedIndicatorQuery = useIndicator(citedIndicatorId);
   const indicators = useMemo(() => query.data?.data ?? [], [query.data]);
   const sourceTotal = query.data?.total ?? indicators.length;
   const isSampled =
@@ -33,6 +37,15 @@ export default function IndicatorsPage() {
   const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Indicator | null>(null);
+
+  useEffect(() => {
+    if (!citedIndicatorId) {
+      setSelected(null);
+      return;
+    }
+    if (citedIndicatorQuery.data?.data)
+      setSelected(citedIndicatorQuery.data.data);
+  }, [citedIndicatorId, citedIndicatorQuery.data]);
 
   const sources = useMemo(
     () => [...new Set(indicators.map((item) => item.sourceFeed))].sort(),

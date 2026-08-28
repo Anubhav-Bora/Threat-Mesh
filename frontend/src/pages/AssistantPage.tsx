@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowRight,
   Bot,
   Braces,
@@ -18,7 +19,7 @@ import { useNavigate } from "react-router-dom";
 import { threatApi } from "../api/client";
 import { Badge } from "../components/UI";
 import { useApiMode, useSummary } from "../hooks/useThreatData";
-import type { ChatMessage } from "../types";
+import type { AssistantCitation, ChatMessage } from "../types";
 
 const suggestions = [
   "Which campaigns have the highest average IOC confidence?",
@@ -72,6 +73,7 @@ export default function AssistantPage() {
           retrievedCount: result.data.retrievedCount,
           queryTimeMs: result.data.queryTimeMs,
           includedProvenance: result.data.includedProvenance,
+          citationIntegrity: result.data.citationIntegrity,
         },
       ]);
     },
@@ -168,35 +170,49 @@ export default function AssistantPage() {
                     })}
                   </time>
                 </div>
-                <p>{message.content}</p>
+                <GroundedAnswer
+                  content={message.content}
+                  citations={message.citations ?? []}
+                  onOpen={(citation) => {
+                    const target = citationTarget(citation);
+                    if (target) navigate(target);
+                  }}
+                />
                 {message.citations && message.citations.length > 0 && (
                   <div className="citation-block">
                     <span>
                       <Database size={13} />
-                      Retrieved evidence
+                      {message.citationIntegrity
+                        ? "Server-validated evidence"
+                        : "Retrieved demo evidence"}
                     </span>
                     <div>
-                      {message.citations.map((citation) => (
-                        <button
-                          key={`${citation.kind}-${citation.id}`}
-                          type="button"
-                          onClick={() =>
-                            navigate(
-                              citation.kind === "indicator"
-                                ? "/indicators"
-                                : citation.kind === "campaign"
-                                  ? "/campaigns"
-                                  : citation.kind === "technique"
-                                    ? "/attack"
-                                    : "/reports",
-                            )
-                          }
-                        >
-                          <i>{citation.kind.slice(0, 1).toUpperCase()}</i>
-                          {citation.label}
-                          <ArrowRight size={12} />
-                        </button>
-                      ))}
+                      {message.citations.map((citation) => {
+                        const target = citationTarget(citation);
+                        const content = (
+                          <>
+                            <i>{citation.kind.slice(0, 1).toUpperCase()}</i>
+                            {citation.label}
+                            {target && <ArrowRight size={12} />}
+                          </>
+                        );
+                        return target ? (
+                          <button
+                            key={citation.recordId}
+                            type="button"
+                            onClick={() => navigate(target)}
+                          >
+                            {content}
+                          </button>
+                        ) : (
+                          <span
+                            className="citation-chip"
+                            key={citation.recordId}
+                          >
+                            {content}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -219,6 +235,29 @@ export default function AssistantPage() {
                           : message.includedProvenance === "live"
                             ? "Live-feed evidence"
                             : "No evidence included"}
+                      </span>
+                    )}
+                    {message.citationIntegrity && (
+                      <span
+                        className={`citation-status citation-status--${message.citationIntegrity.status}`}
+                      >
+                        {message.citationIntegrity.status === "verified" ? (
+                          <ShieldCheck size={12} />
+                        ) : message.citationIntegrity.status === "partial" ||
+                          message.citationIntegrity.rejectedCount > 0 ? (
+                          <AlertTriangle size={12} />
+                        ) : (
+                          <LockKeyhole size={12} />
+                        )}
+                        {message.citationIntegrity.status === "verified"
+                          ? `${message.citationIntegrity.validatedCount} citation ID${message.citationIntegrity.validatedCount === 1 ? "" : "s"} verified`
+                          : message.citationIntegrity.status === "partial"
+                            ? message.citationIntegrity.rejectedCount > 0
+                              ? `${message.citationIntegrity.validatedCount} valid · ${message.citationIntegrity.rejectedCount} rejected`
+                              : `${message.citationIntegrity.validatedCount} valid · citation set mismatch`
+                            : message.citationIntegrity.rejectedCount > 0
+                              ? `0 valid · ${message.citationIntegrity.rejectedCount} rejected`
+                              : "No citation IDs returned"}
                       </span>
                     )}
                   </div>
@@ -278,7 +317,7 @@ export default function AssistantPage() {
           <div>
             <span>
               <ShieldCheck size={13} />
-              Answers use retrieved records only
+              Retrieved context · analyst review required
             </span>
             <button
               type="submit"
@@ -320,7 +359,7 @@ export default function AssistantPage() {
               </span>
               <div>
                 <strong>Structure evidence</strong>
-                <small>IDs, counts, dates, and provenance</small>
+                <small>Allow-listed IDs, counts, dates, and provenance</small>
               </div>
             </li>
             <li>
@@ -329,7 +368,7 @@ export default function AssistantPage() {
               </span>
               <div>
                 <strong>Compose from facts</strong>
-                <small>No unsupported data permitted</small>
+                <small>Generated wording remains review-gated</small>
               </div>
             </li>
           </ol>
@@ -340,8 +379,8 @@ export default function AssistantPage() {
           <ul>
             <li>No direct database write access</li>
             <li>No autonomous security decisions</li>
-            <li>No claims without retrieved evidence</li>
-            <li>Citations remain inspectable</li>
+            <li>Responses are constrained to retrieved context</li>
+            <li>Displayed citation IDs are server validated</li>
           </ul>
         </section>
         <section className="panel assistant-tips">
@@ -355,4 +394,63 @@ export default function AssistantPage() {
       </aside>
     </div>
   );
+}
+
+const referencePattern =
+  /(\[[a-z][a-z0-9_-]{1,31}:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\])/gi;
+
+function GroundedAnswer({
+  content,
+  citations,
+  onOpen,
+}: {
+  content: string;
+  citations: AssistantCitation[];
+  onOpen: (citation: AssistantCitation) => void;
+}) {
+  const byRecordId = new Map(
+    citations.map((citation, index) => [
+      citation.recordId.toLowerCase(),
+      { citation, index: index + 1 },
+    ]),
+  );
+  return (
+    <p>
+      {content.split(referencePattern).map((part, index) => {
+        const recordId = part.startsWith("[") ? part.slice(1, -1) : "";
+        const match = byRecordId.get(recordId.toLowerCase());
+        if (!match) return part;
+        const target = citationTarget(match.citation);
+        return target ? (
+          <button
+            className="inline-citation"
+            type="button"
+            key={`${recordId}-${index}`}
+            onClick={() => onOpen(match.citation)}
+            aria-label={`Open evidence ${match.citation.label}`}
+            title={match.citation.label}
+          >
+            {match.index}
+          </button>
+        ) : (
+          <span
+            className="inline-citation inline-citation--static"
+            key={`${recordId}-${index}`}
+            title={match.citation.label}
+          >
+            {match.index}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+function citationTarget(citation: AssistantCitation) {
+  const value = encodeURIComponent(citation.id);
+  if (citation.kind === "indicator") return `/indicators?ioc=${value}`;
+  if (citation.kind === "campaign") return `/campaigns?campaign=${value}`;
+  if (citation.kind === "technique") return `/attack?technique=${value}`;
+  if (citation.kind === "report") return `/reports?report=${value}`;
+  return null;
 }

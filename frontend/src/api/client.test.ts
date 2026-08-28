@@ -233,6 +233,23 @@ describe("FastAPI client contract", () => {
           campaigns: [{ id: 4, label: "Cluster 4" }],
           recent_reports: [{ id: 8, title: "Weekly report" }],
         },
+        citations: [
+          {
+            record_id: "campaign:4",
+            kind: "campaign",
+            label: "Cluster 4",
+          },
+          {
+            record_id: "report:8",
+            kind: "report",
+            label: "Weekly report",
+          },
+        ],
+        citation_integrity: {
+          status: "verified",
+          validated_count: 2,
+          rejected_count: 0,
+        },
         disclaimer: "Grounded facts only.",
       }),
     );
@@ -242,15 +259,29 @@ describe("FastAPI client contract", () => {
       answer: "One matching record.",
       retrievedCount: 3,
       includedProvenance: "live",
-    });
-    expect(result.data.citations[0]).toMatchObject({
-      label: "203.0.113.9",
-      kind: "indicator",
+      citationIntegrity: {
+        status: "verified",
+        validatedCount: 2,
+        rejectedCount: 0,
+      },
     });
     expect(result.data.citations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "campaign", label: "Cluster 4" }),
-        expect.objectContaining({ kind: "report", label: "Weekly report" }),
+        expect.objectContaining({
+          recordId: "campaign:4",
+          kind: "campaign",
+          label: "Cluster 4",
+        }),
+        expect.objectContaining({
+          recordId: "report:8",
+          kind: "report",
+          label: "Weekly report",
+        }),
+      ]),
+    );
+    expect(result.data.citations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "203.0.113.9" }),
       ]),
     );
   });

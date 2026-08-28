@@ -69,7 +69,8 @@ const routeMeta: Record<
   "/assistant": {
     eyebrow: "Retrieval-first AI",
     title: "Ask ThreatMesh",
-    description: "Answers grounded exclusively in retrieved threat records.",
+    description:
+      "Retrieval-bounded answers with server-validated evidence IDs.",
   },
   "/settings": {
     eyebrow: "Workspace",

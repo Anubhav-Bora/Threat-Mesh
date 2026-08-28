@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   BookOpen,
+  Eye,
   ExternalLink,
   Search,
   ShieldCheck,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Badge, EmptyState, PanelHeader, SkeletonRows } from "../components/UI";
 import { useTechniques } from "../hooks/useThreatData";
 import type { AttackTechnique } from "../types";
@@ -29,19 +31,41 @@ const tacticOrder = [
 ];
 
 export default function AttackPage() {
+  const [searchParams] = useSearchParams();
+  const citedTechniqueId = searchParams.get("technique");
   const query = useTechniques();
   const techniques = useMemo(() => query.data?.data ?? [], [query.data]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(citedTechniqueId ?? "");
+  const [observedOnly, setObservedOnly] = useState(true);
   const [selected, setSelected] = useState<AttackTechnique | null>(null);
+  useEffect(() => {
+    setSearch(citedTechniqueId ?? "");
+  }, [citedTechniqueId]);
+  useEffect(() => {
+    if (!citedTechniqueId) {
+      setSelected((current) => (current === null ? current : null));
+      return;
+    }
+    const cited = techniques.find((item) => item.id === citedTechniqueId);
+    if (cited)
+      setSelected((current) => (current?.id === cited.id ? current : cited));
+  }, [citedTechniqueId, techniques]);
   const filtered = useMemo(
     () =>
-      techniques.filter((item) =>
-        `${item.id} ${item.name} ${(item.tactics ?? [item.tactic]).join(" ")} ${item.malwareFamilies.join(" ")}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
+      techniques.filter(
+        (item) =>
+          (!observedOnly ||
+            item.observations > 0 ||
+            item.id === citedTechniqueId) &&
+          `${item.id} ${item.name} ${(item.tactics ?? [item.tactic]).join(" ")} ${item.malwareFamilies.join(" ")}`
+            .toLowerCase()
+            .includes(search.toLowerCase()),
       ),
-    [techniques, search],
+    [citedTechniqueId, observedOnly, techniques, search],
   );
+  const observedCount = techniques.filter(
+    (item) => item.observations > 0,
+  ).length;
   const groups = tacticOrder
     .map((tactic) => ({
       tactic,
@@ -52,7 +76,9 @@ export default function AttackPage() {
     .filter((group) => group.items.length);
   const max = Math.max(...techniques.map((item) => item.observations), 1);
   const hasBaseline = techniques.some((item) => item.hasBaseline !== false);
-  const trending = [...techniques]
+  const trending = techniques
+    .filter((item) => item.observations > 0)
+    .slice()
     .sort((a, b) =>
       hasBaseline
         ? b.observations -
@@ -101,15 +127,28 @@ export default function AttackPage() {
               inherent technique severity.
             </p>
           </div>
-          <label className="search-field">
-            <Search size={16} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search ID, technique, family"
-              aria-label="Search ATT&CK techniques"
-            />
-          </label>
+          <div className="matrix-controls">
+            <button
+              type="button"
+              className={`observed-toggle ${observedOnly ? "is-active" : ""}`}
+              onClick={() => setObservedOnly((value) => !value)}
+              aria-pressed={observedOnly}
+            >
+              <Eye size={14} />
+              {observedOnly
+                ? `${observedCount} observed`
+                : `Full catalog · ${techniques.length}`}
+            </button>
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search ID, technique, family"
+                aria-label="Search ATT&CK techniques"
+              />
+            </label>
+          </div>
         </div>
         <div
           className="attack-matrix"
@@ -160,6 +199,24 @@ export default function AttackPage() {
               </div>
             </section>
           ))}
+          {groups.length === 0 && (
+            <div className="matrix-empty">
+              <BookOpen size={22} />
+              <strong>No observed techniques match</strong>
+              <span>
+                Change the search or open the complete ATT&CK catalog.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (observedOnly) setObservedOnly(false);
+                  else setSearch("");
+                }}
+              >
+                {observedOnly ? "Show full catalog" : "Clear search"}
+              </button>
+            </div>
+          )}
         </div>
         <div className="matrix-legend">
           <span>Observation intensity</span>

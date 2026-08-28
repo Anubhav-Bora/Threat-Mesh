@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
   CalendarDays,
@@ -8,19 +8,26 @@ import {
   Search,
   ShieldAlert,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { CampaignGraph } from "../components/CampaignGraph";
 import { Donut } from "../components/Charts";
 import { Badge, EmptyState, PanelHeader, SkeletonRows } from "../components/UI";
-import { useCampaigns } from "../hooks/useThreatData";
+import { useCampaign, useCampaigns } from "../hooks/useThreatData";
 import type { Campaign } from "../types";
 import { formatDate, formatRelative } from "../utils/format";
 
 export default function CampaignsPage() {
+  const [searchParams] = useSearchParams();
+  const citedCampaignId = searchParams.get("campaign");
   const query = useCampaigns();
+  const citedCampaignQuery = useCampaign(citedCampaignId);
   const campaigns = useMemo(() => query.data?.data ?? [], [query.data]);
   const [search, setSearch] = useState("");
   const [volume, setVolume] = useState("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(citedCampaignId);
+  useEffect(() => {
+    setSelectedId(citedCampaignId);
+  }, [citedCampaignId]);
   const filtered = useMemo(
     () =>
       campaigns.filter(
@@ -33,7 +40,16 @@ export default function CampaignsPage() {
     [campaigns, search, volume],
   );
   const selected: Campaign | undefined =
-    campaigns.find((campaign) => campaign.id === selectedId) ?? filtered[0];
+    selectedId === null
+      ? filtered[0]
+      : (campaigns.find((campaign) => campaign.id === selectedId) ??
+        (selectedId === citedCampaignId
+          ? (citedCampaignQuery.data?.data ?? undefined)
+          : undefined));
+  const exactPivotPending =
+    Boolean(citedCampaignId) && !selected && citedCampaignQuery.isLoading;
+  const exactPivotUnavailable =
+    Boolean(citedCampaignId) && !selected && !citedCampaignQuery.isLoading;
   const selectedEvidence = selected
     ? [
         ...selected.relationshipEvidence.repeatedIndicators.map((item) => ({
@@ -66,7 +82,7 @@ export default function CampaignsPage() {
         />
       </section>
     );
-  if (query.data?.mode === "live" && campaigns.length === 0)
+  if (query.data?.mode === "live" && campaigns.length === 0 && !citedCampaignId)
     return (
       <section className="panel">
         <EmptyState
@@ -291,6 +307,19 @@ export default function CampaignsPage() {
               </div>
             </article>
           </div>
+        </section>
+      )}
+      {exactPivotPending && (
+        <section className="panel campaign-detail">
+          <SkeletonRows count={8} />
+        </section>
+      )}
+      {exactPivotUnavailable && (
+        <section className="panel campaign-detail">
+          <EmptyState
+            title="Campaign snapshot unavailable"
+            description="This evidence link refers to a campaign snapshot that is no longer present. Campaign communities can be rebuilt as the observation graph changes."
+          />
         </section>
       )}
     </div>

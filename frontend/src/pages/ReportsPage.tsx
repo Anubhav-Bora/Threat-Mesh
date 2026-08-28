@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bot,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Badge, CopyButton, EmptyState, SkeletonRows } from "../components/UI";
 import { useReport, useReports } from "../hooks/useThreatData";
 import type { ThreatReport } from "../types";
@@ -28,15 +29,26 @@ function reportMarkdown(report: ThreatReport) {
 }
 
 export default function ReportsPage() {
+  const [searchParams] = useSearchParams();
+  const citedReportId = searchParams.get("report");
   const query = useReports();
   const reports = query.data?.data ?? [];
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(citedReportId);
+  useEffect(() => {
+    setSelectedId(citedReportId);
+  }, [citedReportId]);
   const [showNew, setShowNew] = useState(false);
-  const selected =
-    reports.find((report) => report.id === selectedId) ?? reports[0];
-  const requiresDetail = query.data?.mode === "live" && Boolean(selected);
-  const detailQuery = useReport(requiresDetail ? selected?.id : undefined);
-  const report = requiresDetail ? detailQuery.data?.data : selected;
+  const selectedSummary =
+    selectedId === null
+      ? reports[0]
+      : reports.find((report) => report.id === selectedId);
+  const resolvedReportId = selectedId ?? selectedSummary?.id;
+  const requiresDetail =
+    query.data?.mode === "live" && Boolean(resolvedReportId);
+  const detailQuery = useReport(requiresDetail ? resolvedReportId : undefined);
+  const report = requiresDetail
+    ? (detailQuery.data?.data ?? undefined)
+    : selectedSummary;
   const isAiGenerated =
     report?.generatedBy === "gemini" || report?.generatedBy === "ollama";
 
@@ -55,7 +67,7 @@ export default function ReportsPage() {
         />
       </section>
     );
-  if (query.data?.mode === "live" && reports.length === 0)
+  if (query.data?.mode === "live" && reports.length === 0 && !citedReportId)
     return (
       <section className="panel">
         <EmptyState
@@ -96,7 +108,7 @@ export default function ReportsPage() {
             <button
               key={report.id}
               type="button"
-              className={selected?.id === report.id ? "is-selected" : ""}
+              className={selectedSummary?.id === report.id ? "is-selected" : ""}
               onClick={() => setSelectedId(report.id)}
             >
               <span className="report-list__icon report-list__icon--draft">
@@ -137,7 +149,16 @@ export default function ReportsPage() {
         <section className="panel report-document">
           <EmptyState
             title="Report narrative unavailable"
-            description="The report summary loaded, but its generated Markdown could not be retrieved. No placeholder narrative or reconstructed download is being shown."
+            description="This report could not be retrieved or the cited snapshot no longer exists. No unrelated placeholder narrative is being shown."
+          />
+        </section>
+      )}
+
+      {citedReportId && !requiresDetail && !report && (
+        <section className="panel report-document">
+          <EmptyState
+            title="Report snapshot unavailable"
+            description="This evidence link does not match a report in the current corpus. No unrelated report has been substituted."
           />
         </section>
       )}

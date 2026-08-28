@@ -160,8 +160,15 @@ export interface MapFilters {
 
 export interface AssistantCitation {
   id: string;
+  recordId: string;
   label: string;
-  kind: "indicator" | "campaign" | "technique" | "report";
+  kind: "indicator" | "campaign" | "technique" | "report" | "aggregate";
+}
+
+export interface CitationIntegrity {
+  status: "verified" | "partial" | "absent";
+  validatedCount: number;
+  rejectedCount: number;
 }
 
 export interface AssistantAnswer {
@@ -170,6 +177,7 @@ export interface AssistantAnswer {
   retrievedCount: number;
   queryTimeMs: number;
   includedProvenance?: "none" | "demo" | "live";
+  citationIntegrity?: CitationIntegrity;
 }
 
 export interface ChatMessage {
@@ -181,4 +189,5 @@ export interface ChatMessage {
   retrievedCount?: number;
   queryTimeMs?: number;
   includedProvenance?: "none" | "demo" | "live";
+  citationIntegrity?: CitationIntegrity;
 }

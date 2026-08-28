@@ -212,12 +212,29 @@ class AskRequest(BaseModel):
         return self
 
 
+class AssistantCitation(BaseModel):
+    record_id: str = Field(min_length=3, max_length=161)
+    kind: Literal["indicator", "campaign", "technique", "report", "aggregate"]
+    label: str = Field(min_length=1, max_length=240)
+
+
+class CitationIntegrity(BaseModel):
+    status: Literal["verified", "partial", "absent"]
+    validated_count: int = Field(ge=0)
+    rejected_count: int = Field(ge=0)
+
+
 class AskResponse(BaseModel):
     answer: str
     provider: str
     model: str
     grounded_facts: dict[str, Any]
-    disclaimer: str = "Generated wording is grounded only in the returned ThreatMesh facts."
+    citations: list[AssistantCitation] = Field(default_factory=list)
+    citation_integrity: CitationIntegrity
+    disclaimer: str = (
+        "Citation IDs are server-validated against this response's retrieved facts. "
+        "Generated wording and claim support still require analyst review."
+    )
 
 
 def _as_utc(value: datetime) -> datetime:

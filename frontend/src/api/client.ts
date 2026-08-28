@@ -656,9 +656,29 @@ const parseSummary = (payload: any): SummaryStats => {
 
 export const threatApi = {
   indicators: loadIndicators,
+  indicator: (id: string) =>
+    withFallback<Indicator | null>(
+      `indicator-${id}`,
+      demoIndicators.find((item) => item.id === id) ?? null,
+      async () =>
+        normalizeIndicator(
+          await request<any>(`/iocs/${encodeURIComponent(id)}`),
+          0,
+        ),
+    ),
   campaigns: () =>
     withFallback("campaigns", demoCampaigns, async () =>
       listPayload(await request<any>("/campaigns")).map(normalizeCampaign),
+    ),
+  campaign: (id: string) =>
+    withFallback<Campaign | null>(
+      `campaign-${id}`,
+      demoCampaigns.find((campaign) => campaign.id === id) ?? null,
+      async () =>
+        normalizeCampaign(
+          await request<any>(`/campaigns/${encodeURIComponent(id)}`),
+          0,
+        ),
     ),
   techniques: () =>
     withFallback("techniques", demoTechniques, async () => {
@@ -690,10 +710,14 @@ export const threatApi = {
       listPayload(await request<any>("/reports")).map(normalizeReport),
     ),
   report: (id: string) =>
-    withFallback(
+    withFallback<ThreatReport | null>(
       `report-${id}`,
-      demoReports.find((report) => report.id === id) ?? demoReports[0]!,
-      async () => normalizeReport(await request<any>(`/reports/${id}`), 0),
+      demoReports.find((report) => report.id === id) ?? null,
+      async () =>
+        normalizeReport(
+          await request<any>(`/reports/${encodeURIComponent(id)}`),
+          0,
+        ),
     ),
   rules: () =>
     withFallback("rules", demoRules, async () =>
@@ -733,43 +757,37 @@ export const threatApi = {
       );
       const facts = payload?.grounded_facts ?? {};
       const retrievedIndicators = safeArray(facts.indicators);
-      const indicatorCitations = retrievedIndicators
-        .slice(0, 5)
-        .map((item: any, index) => ({
-          id: safeString(item?.id, `retrieved-${index}`),
-          label: safeString(item?.value, "Retrieved indicator"),
-          kind: "indicator" as const,
-        }));
-      const techniqueCitations = safeArray(facts.attack_techniques).map(
-        (item: any) => ({
-          id: safeString(Array.isArray(item) ? item[0] : item?.id),
-          label: safeString(
-            Array.isArray(item) ? item[0] : item?.id,
-            "Technique",
-          ),
-          kind: "technique" as const,
-        }),
-      );
       const campaignFacts = safeArray(facts.campaigns);
-      const campaignCitations = campaignFacts.map((item: any, index) => ({
-        id: safeString(item?.id, `campaign-${index}`),
-        label: safeString(item?.label, "Retrieved campaign"),
-        kind: "campaign" as const,
-      }));
       const reportFacts = safeArray(facts.recent_reports);
-      const reportCitations = reportFacts.map((item: any, index) => ({
-        id: safeString(item?.id, `report-${index}`),
-        label: safeString(item?.title, "Retrieved report"),
-        kind: "report" as const,
-      }));
+      const citationKinds = new Set([
+        "indicator",
+        "campaign",
+        "technique",
+        "report",
+        "aggregate",
+      ]);
+      const citations = safeArray(payload?.citations)
+        .map((item: any) => {
+          const recordId = safeString(get(item, "recordId", "record_id"));
+          const kind = safeString(item?.kind);
+          if (!recordId || !citationKinds.has(kind)) return null;
+          return {
+            recordId,
+            id: recordId.includes(":")
+              ? recordId.slice(recordId.indexOf(":") + 1)
+              : recordId,
+            label: safeString(item?.label, recordId),
+            kind: kind as AssistantAnswer["citations"][number]["kind"],
+          };
+        })
+        .filter(
+          (item): item is AssistantAnswer["citations"][number] => item !== null,
+        );
+      const integrity = payload?.citation_integrity;
+      const integrityStatus = safeString(get(integrity ?? {}, "status"));
       const data: AssistantAnswer = {
         answer: safeString(payload?.answer),
-        citations: [
-          ...indicatorCitations,
-          ...campaignCitations,
-          ...reportCitations,
-          ...techniqueCitations,
-        ].slice(0, 8),
+        citations,
         retrievedCount:
           safeNumber(
             facts.retrieved_observation_count,
@@ -784,6 +802,21 @@ export const threatApi = {
           ? (safeString(
               facts.included_provenance,
             ) as AssistantAnswer["includedProvenance"])
+          : undefined,
+        citationIntegrity: ["verified", "partial", "absent"].includes(
+          integrityStatus,
+        )
+          ? {
+              status: integrityStatus as NonNullable<
+                AssistantAnswer["citationIntegrity"]
+              >["status"],
+              validatedCount: safeNumber(
+                get(integrity, "validatedCount", "validated_count"),
+              ),
+              rejectedCount: safeNumber(
+                get(integrity, "rejectedCount", "rejected_count"),
+              ),
+            }
           : undefined,
       };
       markResource("assistant", false);
@@ -832,6 +865,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
         .slice(0, 5)
         .map((item) => ({
           id: item.id,
+          recordId: `ioc:${item.id}`,
           label: item.value,
           kind: "indicator" as const,
         })),
@@ -852,6 +886,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       answer: `The strongest observed technique signals are ${top.map((item) => `${item.name} (${item.id}, ${item.observations} observations)`).join("; ")}. Counts reflect mappings in the retrieved OSINT dataset and do not prove execution in any specific environment.`,
       citations: top.map((item) => ({
         id: item.id,
+        recordId: `technique:${item.id}`,
         label: `${item.id} ${item.name}`,
         kind: "technique" as const,
       })),
@@ -868,6 +903,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       answer: `${top[0]?.label} has the highest average member-IOC confidence at ${top[0]?.averageIocConfidence}%, followed by ${top[1]?.label} at ${top[1]?.averageIocConfidence}%. This metric does not measure cluster or attribution confidence; campaign labels remain correlation hypotheses.`,
       citations: top.map((item) => ({
         id: item.id,
+        recordId: `campaign:${item.id}`,
         label: item.label,
         kind: "campaign" as const,
       })),
@@ -896,6 +932,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       .slice(0, 5)
       .map((item) => ({
         id: item.id,
+        recordId: `ioc:${item.id}`,
         label: item.value,
         kind: "indicator" as const,
       })),

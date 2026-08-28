@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreatReport } from "../types";
 import ReportsPage from "./ReportsPage";
 
@@ -23,22 +24,45 @@ const report = vi.hoisted(
     }) satisfies ThreatReport,
 );
 
+const directReport = vi.hoisted(
+  () =>
+    ({
+      ...report,
+      id: "archived-report",
+      title: "Archived exact report",
+    }) satisfies ThreatReport,
+);
+
+const useReportMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../hooks/useThreatData", () => ({
   useReports: () => ({
     data: { mode: "live", data: [report] },
     isLoading: false,
     isError: false,
   }),
-  useReport: () => ({
-    data: { mode: "live", data: report },
-    isLoading: false,
-    isError: false,
-  }),
+  useReport: (id?: string) => useReportMock(id),
 }));
 
 describe("ReportsPage report generation", () => {
+  beforeEach(() => {
+    useReportMock.mockReset();
+    useReportMock.mockImplementation((id?: string) => ({
+      data: {
+        mode: "live",
+        data: id === directReport.id ? directReport : report,
+      },
+      isLoading: false,
+      isError: false,
+    }));
+  });
+
   it("opens a clearly labelled secure generation dialog", () => {
-    render(<ReportsPage />);
+    render(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
 
     expect(screen.queryByText("Operator guide")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate report" }));
@@ -56,5 +80,18 @@ describe("ReportsPage report generation", () => {
     expect(
       screen.queryByText(/authenticated operator request/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("fetches a cited report even when it is outside the loaded index", () => {
+    render(
+      <MemoryRouter initialEntries={["/reports?report=archived-report"]}>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(useReportMock).toHaveBeenCalledWith("archived-report");
+    expect(
+      screen.getByRole("heading", { name: "Archived exact report" }),
+    ).toBeInTheDocument();
   });
 });

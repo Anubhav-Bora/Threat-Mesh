@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -407,6 +408,51 @@ async def test_retrieval_grounded_ai_and_report_routes(client, app, settings) ->
     )
     assert report.status_code == 201
     assert report.json()["provider"] == "static"
+
+
+@pytest.mark.asyncio
+async def test_assistant_returns_only_server_validated_citations(client, app, settings) -> None:
+    await seed_demo(app.state.database.session_factory, settings)
+    async with app.state.database.session_factory() as session:
+        cited_id = await session.scalar(
+            select(IOC.id).where(IOC.malware_family == "Emotet").order_by(IOC.id)
+        )
+    assert cited_id is not None
+    valid_record_id = f"ioc:{cited_id}"
+    provider = StaticProvider(
+        json.dumps(
+            {
+                "answer": f"Supported [{valid_record_id}] but forged [ioc:999999].",
+                "cited_record_ids": [valid_record_id, "ioc:999999"],
+            }
+        )
+    )
+    app.state.llm_provider_override = provider
+
+    response = await client.post(
+        "/api/v1/assistant/ask", json={"question": "Summarize recent Emotet indicators"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["citations"] == [
+        {
+            "record_id": valid_record_id,
+            "kind": "indicator",
+            "label": next(
+                item["value"]
+                for item in body["grounded_facts"]["indicators"]
+                if item["record_id"] == valid_record_id
+            ),
+        }
+    ]
+    assert body["citation_integrity"] == {
+        "status": "partial",
+        "validated_count": 1,
+        "rejected_count": 1,
+    }
+    assert "ioc:999999" not in body["answer"]
+    assert body["disclaimer"].startswith("Citation IDs are server-validated")
 
 
 @pytest.mark.asyncio

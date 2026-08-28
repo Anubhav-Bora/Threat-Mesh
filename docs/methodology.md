@@ -71,6 +71,11 @@ facility. See
 ## Generated content
 
 AI-written reports summarize supplied aggregates. Assistant responses are
-limited to retrieved database evidence. Generated Sigma and Suricata rules are
-templates for human review, testing, tuning, and change control. No generated
-content is automatically deployed.
+limited to retrieved database evidence. Each assistant request also receives a
+server-built evidence catalog. Only provider citation IDs present in that exact
+catalog are returned to the browser; forged IDs are removed and the response
+reports whether citation identity validation was complete, partial, or absent.
+This validates evidence identity, not the semantic correctness of every
+sentence. Generated Sigma and Suricata rules are templates for human review,
+testing, tuning, and change control. No generated content is automatically
+deployed.

@@ -110,8 +110,10 @@ workspace, so sample records are never silently presented as live observations.
 
 Language models sit after retrieval. The weekly report receives aggregates
 already computed by ThreatMesh. The assistant receives the user's question and
-a bounded set of matching database facts. Provider output changes prose, not
-scores, tags, clusters, or response actions. See
+a bounded set of matching database facts with a server-built evidence
+allow-list. Provider-supplied citation IDs are checked against that exact
+request, and unsupported IDs are discarded before the browser renders them.
+Provider output changes prose, not scores, tags, clusters, or response actions. See
 [ADR 0001](decisions/0001-deterministic-analysis-before-generation.md).
 
 ## Trust boundaries

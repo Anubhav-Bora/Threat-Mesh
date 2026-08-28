@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from app.api.dependencies import AIRateLimitDep
-from app.api.schemas import AskRequest, AskResponse
+from app.api.schemas import AskRequest, AskResponse, AssistantCitation, CitationIntegrity
 from app.genai import RetrievalQAService, build_provider
 
 router = APIRouter(prefix="/assistant", tags=["AI assistant"])
@@ -19,12 +19,23 @@ async def ask(body: AskRequest, request: Request, _: AIRateLimitDep) -> AskRespo
         provider,
         max_rows=request.app.state.settings.llm_max_context_rows,
     )
-    response, facts = await service.answer(
-        body.question, date_from=body.date_from, date_to=body.date_to
-    )
+    result = await service.answer(body.question, date_from=body.date_from, date_to=body.date_to)
     return AskResponse(
-        answer=response.text,
-        provider=response.provider,
-        model=response.model,
-        grounded_facts=facts,
+        answer=result.text,
+        provider=result.provider,
+        model=result.model,
+        grounded_facts=result.facts,
+        citations=[
+            AssistantCitation(
+                record_id=citation.record_id,
+                kind=citation.kind,
+                label=citation.label,
+            )
+            for citation in result.citations
+        ],
+        citation_integrity=CitationIntegrity(
+            status=result.citation_integrity.status,
+            validated_count=result.citation_integrity.validated_count,
+            rejected_count=result.citation_integrity.rejected_count,
+        ),
     )
