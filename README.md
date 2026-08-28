@@ -98,7 +98,7 @@ volume; `docker compose down -v` intentionally removes it.
 | Service | Needed for | Account |
 |---|---|---|
 | abuse.ch Auth-Key | URLhaus and ThreatFox collection | Free, required for current APIs |
-| ArcGIS Location Platform | Optional Esri-hosted basemap | Free-tier browser key, optional; CARTO/OpenStreetMap works without one |
+| ArcGIS Location Platform | Optional premium basemap style | Free-tier browser key, optional; public ArcGIS World Imagery works without one |
 | Google AI Studio | Gemini report/assistant prose | Free-tier backend key, optional |
 | Ollama | Local report/assistant prose | No account, optional local install |
 | Feodo Tracker | Feodo collection | None |

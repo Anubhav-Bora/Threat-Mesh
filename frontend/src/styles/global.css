@@ -1145,41 +1145,203 @@ input[type="range"] {
   z-index: 2;
   inset: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 55% 45%, rgb(31 71 82 / 18%), transparent 45%),
-    #080d13;
+  background: #030812;
 }
-.map-fallback svg {
-  width: 100%;
-  height: 100%;
-  opacity: 0.9;
-}
-.fallback-land {
-  fill: #13212a;
-  stroke: #233944;
-  stroke-width: 1.2;
-}
-.fallback-point {
-  cursor: pointer;
-}
-.fallback-point:hover circle:nth-of-type(2) {
-  stroke: #fff;
-  stroke-width: 1.5;
-}
-.map-fallback__notice {
+.arcgis-raster-map {
   position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #030812;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.arcgis-raster-map.is-dragging {
+  cursor: grabbing;
+}
+.arcgis-raster-map__tiles,
+.arcgis-raster-map__markers {
+  position: absolute;
+  inset: 0;
+}
+.arcgis-raster-map__tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  overflow: hidden;
+  background: #07111d;
+}
+.arcgis-raster-map__tile img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  inset: 0;
+  pointer-events: none;
+}
+.arcgis-raster-map__tile img:first-child {
+  filter: brightness(0.72) saturate(1.25) contrast(1.12);
+}
+.arcgis-raster-map__tile .arcgis-raster-map__reference {
+  z-index: 1;
+  opacity: 0.88;
+  filter: brightness(1.12) drop-shadow(0 1px 1px rgb(0 0 0 / 85%));
+}
+.arcgis-raster-map__markers {
+  z-index: 2;
+  pointer-events: none;
+}
+.arcgis-raster-marker {
+  --marker-color: #8393a7;
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.arcgis-raster-marker.confidence-high {
+  --marker-color: #6ee7d8;
+}
+.arcgis-raster-marker.confidence-medium {
+  --marker-color: #f4b860;
+}
+.arcgis-raster-marker__dot,
+.arcgis-raster-marker__glow,
+.arcgis-raster-marker__precision,
+.arcgis-raster-marker__count {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.arcgis-raster-marker__dot {
+  z-index: 2;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgb(248 250 252 / 88%);
+  background: var(--marker-color);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--marker-color) 82%, transparent),
+    0 0 18px color-mix(in srgb, var(--marker-color) 28%, transparent);
+}
+.arcgis-raster-marker__glow {
+  width: 19px;
+  height: 19px;
+  background: color-mix(in srgb, var(--marker-color) 17%, transparent);
+  filter: blur(2px);
+}
+.arcgis-raster-marker__precision {
+  max-width: 56px;
+  max-height: 56px;
+  border: 1px solid color-mix(in srgb, var(--marker-color) 34%, transparent);
+  background: color-mix(in srgb, var(--marker-color) 4.5%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--marker-color) 10%, transparent);
+}
+.arcgis-raster-marker.confidence-medium .arcgis-raster-marker__dot {
+  width: 9px;
+  height: 9px;
+}
+.arcgis-raster-marker.confidence-medium .arcgis-raster-marker__glow {
+  width: 23px;
+  height: 23px;
+}
+.arcgis-raster-marker.confidence-high .arcgis-raster-marker__dot {
+  width: 11px;
+  height: 11px;
+}
+.arcgis-raster-marker.confidence-high .arcgis-raster-marker__glow {
+  width: 27px;
+  height: 27px;
+}
+.arcgis-raster-marker.is-cluster {
+  width: 38px;
+  height: 38px;
+}
+.arcgis-raster-marker.is-cluster .arcgis-raster-marker__dot {
+  width: 27px;
+  height: 27px;
+  border: 2px solid #a78bfa;
+  background: linear-gradient(145deg, #162239, #0a1120 70%);
+  box-shadow:
+    0 0 0 3px rgb(244 63 94 / 14%),
+    0 0 18px rgb(139 92 246 / 38%);
+}
+.arcgis-raster-marker.is-cluster .arcgis-raster-marker__glow {
+  width: 43px;
+  height: 43px;
+  background: rgb(139 92 246 / 16%);
+}
+.arcgis-raster-marker__count {
+  z-index: 3;
+  color: #f8fafc;
+  font: 700 9px/1 var(--font-sans);
+  text-shadow: 0 1px 3px #020617;
+}
+.arcgis-raster-map__markers.mode-heatmap .arcgis-raster-marker__dot {
+  width: 5px;
+  height: 5px;
+  border: 0;
+}
+.arcgis-raster-map__markers.mode-heatmap .arcgis-raster-marker__glow {
+  width: 38px;
+  height: 38px;
+  opacity: 0.44;
+  filter: blur(7px);
+}
+.arcgis-raster-marker:hover,
+.arcgis-raster-marker:focus-visible {
+  z-index: 3;
+}
+.arcgis-raster-marker:hover .arcgis-raster-marker__dot,
+.arcgis-raster-marker:focus-visible .arcgis-raster-marker__dot {
+  outline: 2px solid rgb(255 255 255 / 55%);
+  outline-offset: 2px;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+.map-atmosphere {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background:
+    radial-gradient(circle at 48% 44%, transparent 32%, rgb(2 6 18 / 22%)),
+    linear-gradient(135deg, rgb(14 116 144 / 6%), rgb(88 28 135 / 7%));
+  box-shadow: inset 0 0 54px rgb(1 4 12 / 46%);
+  pointer-events: none;
+}
+.map-basemap-badge {
+  position: absolute;
+  z-index: 4;
   top: 58px;
   left: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border: 1px solid rgb(244 184 96 / 18%);
-  border-radius: 6px;
-  color: #ad936c;
-  background: rgb(10 15 22 / 88%);
-  font-size: 7.5px;
-  backdrop-filter: blur(8px);
+  border: 1px solid rgb(125 211 252 / 18%);
+  border-radius: 999px;
+  color: #a8c4d8;
+  background: rgb(4 10 20 / 78%);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 24%);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(12px);
+}
+.map-basemap-badge svg {
+  color: #38bdf8;
+}
+.map-basemap-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px rgb(52 211 153 / 72%);
 }
 .map-mode {
   position: absolute;
@@ -1190,12 +1352,14 @@ input[type="range"] {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid rgb(61 75 90 / 68%);
-  border-radius: 8px;
+  border: 1px solid rgb(92 113 138 / 55%);
+  border-radius: 10px;
   color: #8d9aaa;
-  background: rgb(10 15 22 / 89%);
-  box-shadow: 0 8px 22px rgb(0 0 0 / 25%);
-  backdrop-filter: blur(10px);
+  background: rgb(5 11 22 / 84%);
+  box-shadow:
+    0 10px 26px rgb(0 0 0 / 32%),
+    0 1px 0 rgb(255 255 255 / 4%) inset;
+  backdrop-filter: blur(14px);
 }
 .map-mode > svg {
   margin: 0 5px;
@@ -1215,10 +1379,17 @@ input[type="range"] {
 .map-mode button:hover,
 .map-mode button.is-active {
   color: #ecf4fa;
-  background: #202a36;
+  background: rgb(49 65 89 / 76%);
 }
 .map-mode button.is-active {
-  box-shadow: 0 0 0 1px #344250 inset;
+  background: linear-gradient(
+    135deg,
+    rgb(59 130 246 / 24%),
+    rgb(139 92 246 / 25%)
+  );
+  box-shadow:
+    0 0 0 1px rgb(125 211 252 / 24%) inset,
+    0 0 14px rgb(99 102 241 / 12%);
 }
 .map-controls {
   position: absolute;
@@ -1228,11 +1399,11 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgb(61 75 90 / 68%);
-  border-radius: 8px;
-  background: rgb(10 15 22 / 89%);
-  box-shadow: 0 8px 22px rgb(0 0 0 / 25%);
-  backdrop-filter: blur(10px);
+  border: 1px solid rgb(92 113 138 / 55%);
+  border-radius: 10px;
+  background: rgb(5 11 22 / 84%);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 32%);
+  backdrop-filter: blur(14px);
 }
 .map-controls button {
   display: grid;
@@ -1249,8 +1420,17 @@ input[type="range"] {
   border-bottom: 0;
 }
 .map-controls button:hover {
-  color: var(--teal);
-  background: #17212b;
+  color: #7dd3fc;
+  background: linear-gradient(
+    135deg,
+    rgb(14 116 144 / 18%),
+    rgb(99 102 241 / 15%)
+  );
+}
+.map-controls button:disabled {
+  color: #4f5b68;
+  background: transparent;
+  cursor: wait;
 }
 .map-legend {
   position: absolute;
@@ -1258,48 +1438,80 @@ input[type="range"] {
   right: 12px;
   bottom: 12px;
   display: flex;
+  max-width: calc(100% - 24px);
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
-  padding: 7px 9px;
-  border: 1px solid rgb(61 75 90 / 60%);
-  border-radius: 7px;
-  color: #98a5b4;
-  background: rgb(10 15 22 / 85%);
+  padding: 8px 10px;
+  border: 1px solid rgb(92 113 138 / 50%);
+  border-radius: 9px;
+  color: #b3c0cf;
+  background: rgb(5 11 22 / 82%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
   font-size: 8px;
-  backdrop-filter: blur(9px);
+  backdrop-filter: blur(14px);
+}
+.map-legend strong {
+  color: #7f91a5;
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
 }
 .map-legend span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 .map-legend__dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
+  flex: none;
   border-radius: 50%;
-  background: var(--teal);
-  box-shadow: 0 0 7px rgb(110 231 216 / 65%);
+  border: 1px solid rgb(255 255 255 / 60%);
+  box-shadow: 0 0 8px currentcolor;
 }
-.map-legend__dot--medium {
-  background: var(--amber);
-  box-shadow: 0 0 7px rgb(244 184 96 / 55%);
+.map-legend__more {
+  color: #78889a;
+  font-size: 7.5px;
 }
-.map-legend__dot--low {
-  background: #8393a7;
-  box-shadow: 0 0 7px rgb(131 147 167 / 45%);
+.map-legend__heat-scale i {
+  width: 92px;
+  height: 7px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #312e81,
+    #7c3aed,
+    #ec4899,
+    #f97316,
+    #fde047
+  );
+  box-shadow: 0 0 10px rgb(236 72 153 / 24%);
+}
+.map-legend__heat-scale small {
+  color: #728196;
+  font-size: 7px;
 }
 .map-legend__note {
   padding-left: 10px;
-  border-left: 1px solid #34404c;
-  color: #6f7d8d;
+  border-left: 1px solid #34465a;
+  color: #78899d;
 }
 .map-attribution {
   position: absolute;
   z-index: 4;
-  bottom: 4px;
+  bottom: 5px;
   left: 8px;
-  color: #596777;
-  font-size: 6.5px;
+  max-width: min(52%, 560px);
+  padding: 3px 5px;
+  border-radius: 4px;
+  color: #8c99a7;
+  background: rgb(7 10 15 / 78%);
+  font-size: 9px;
+  line-height: 1.3;
   text-shadow: 0 1px 2px #000;
 }
 .time-controller {
@@ -4440,6 +4652,11 @@ select {
   }
   .map-legend__note {
     display: none !important;
+  }
+  .map-attribution {
+    right: 8px;
+    bottom: 50px;
+    max-width: none;
   }
   .time-controller {
     grid-template-columns: 1fr;

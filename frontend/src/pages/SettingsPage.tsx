@@ -90,7 +90,7 @@ export default function SettingsPage() {
               <strong>
                 {hasArcGisKey
                   ? "ArcGIS Location Platform"
-                  : "No-key OSM/CARTO fallback"}
+                  : "Public ArcGIS tile service"}
               </strong>
             </div>
             <Badge tone={hasArcGisKey ? "success" : "neutral"}>
@@ -165,9 +165,10 @@ export default function SettingsPage() {
             </Badge>
           </div>
           <p>
-            ThreatMesh works without a key by rendering an OpenStreetMap-based
-            tile layer through the ArcGIS SDK. Add a key only if you want
-            Esri-hosted basemap styles.
+            ThreatMesh works without a key by using public ArcGIS World Imagery
+            with the ArcGIS Boundaries and Places reference layer. Add a
+            restricted key only if you want the ArcGIS Location Platform
+            navigation-night style.
           </p>
           {!hasArcGisKey && (
             <ol className="setup-steps">

@@ -1,14 +1,26 @@
 import {
-  AlertTriangle,
   Layers3,
   LocateFixed,
   Maximize2,
   Minus,
   Plus,
+  Satellite,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Indicator, MapFilters } from "../types";
 import { rangeToDays } from "../utils/format";
+import {
+  ARCGIS_BASE_TILE_SERVICE,
+  ARCGIS_RASTER_ATTRIBUTION,
+  ARCGIS_REFERENCE_TILE_SERVICE,
+  ArcGisRasterMap,
+} from "./ArcGisRasterMap";
+import type { ArcGisRasterMapHandle } from "./ArcGisRasterMap";
+import {
+  THREAT_FAMILY_COLORS,
+  threatFamilyColor,
+  threatFamilyColorIndex,
+} from "./mapVisuals";
 
 export type MapMode = "clusters" | "heatmap" | "uncertainty";
 
@@ -20,6 +32,20 @@ interface ThreatMapProps {
   onSelect: (indicator: Indicator) => void;
 }
 
+const hasWebGl2 = () => {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("webgl2", {
+      failIfMajorPerformanceCaveat: true,
+    });
+    return context !== null;
+  } catch {
+    return false;
+  }
+};
+
 export function ThreatMap({
   indicators,
   filters,
@@ -28,20 +54,31 @@ export function ThreatMap({
   onSelect,
 }: ThreatMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const rasterMapRef = useRef<ArcGisRasterMapHandle>(null);
   const viewRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
   const precisionLayerRef = useRef<any>(null);
   const createGraphicsRef = useRef<((items: Indicator[]) => any[]) | null>(
     null,
   );
+  const createDeleteGraphicsRef = useRef<
+    ((objectIds: Array<number | string>) => any[]) | null
+  >(null);
+  const createPointRendererRef = useRef<(() => any) | null>(null);
+  const createClusterReductionRef = useRef<(() => any) | null>(null);
   const createPrecisionGraphicsRef = useRef<
     ((items: Indicator[]) => any[]) | null
   >(null);
   const onSelectRef = useRef(onSelect);
   const indicatorsRef = useRef(indicators);
-  const [mapState, setMapState] = useState<
-    "loading" | "ready" | "fallback" | "error"
-  >("loading");
+  const lastQueuedIndicatorsRef = useRef<Indicator[] | null>(null);
+  const activeObjectIdsRef = useRef<Array<number | string>>([]);
+  const editQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const editVersionRef = useRef(0);
+  const disposedRef = useRef(false);
+  const [mapState, setMapState] = useState<"loading" | "ready" | "fallback">(
+    "loading",
+  );
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   onSelectRef.current = onSelect;
@@ -63,43 +100,67 @@ export function ThreatMap({
     );
   }, [filters, indicators]);
 
+  const familyLegend = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of fallbackIndicators)
+      counts.set(item.malwareFamily, (counts.get(item.malwareFamily) ?? 0) + 1);
+    const families = Array.from(counts, ([family, count]) => ({
+      family,
+      count,
+    })).sort((left, right) => right.count - left.count);
+    return {
+      items: families.slice(0, 3),
+      remaining: Math.max(0, families.length - 3),
+    };
+  }, [fallbackIndicators]);
+
   useEffect(() => {
     if (!containerRef.current) return;
     let cancelled = false;
     let view: any;
+    let fatalErrorHandle: { remove: () => void } | undefined;
+    let recoveryController: AbortController | undefined;
+    disposedRef.current = false;
 
     const initialize = async () => {
+      if (!hasWebGl2()) {
+        setMapState("fallback");
+        return;
+      }
+
       try {
         const [
           { default: config },
           { default: ArcGISMap },
           { default: MapView },
           { default: Basemap },
-          { default: WebTileLayer },
+          { default: TileLayer },
           { default: FeatureLayer },
           { default: GraphicsLayer },
           { default: Graphic },
           { default: Point },
           { default: Circle },
-          { default: SimpleRenderer },
+          { default: UniqueValueRenderer },
           { default: SimpleMarkerSymbol },
           { default: SimpleFillSymbol },
           { default: FeatureReductionCluster },
+          reactiveUtils,
         ] = await Promise.all([
           import("@arcgis/core/config.js"),
           import("@arcgis/core/Map.js"),
           import("@arcgis/core/views/MapView.js"),
           import("@arcgis/core/Basemap.js"),
-          import("@arcgis/core/layers/WebTileLayer.js"),
+          import("@arcgis/core/layers/TileLayer.js"),
           import("@arcgis/core/layers/FeatureLayer.js"),
           import("@arcgis/core/layers/GraphicsLayer.js"),
           import("@arcgis/core/Graphic.js"),
           import("@arcgis/core/geometry/Point.js"),
           import("@arcgis/core/geometry/Circle.js"),
-          import("@arcgis/core/renderers/SimpleRenderer.js"),
+          import("@arcgis/core/renderers/UniqueValueRenderer.js"),
           import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
           import("@arcgis/core/symbols/SimpleFillSymbol.js"),
           import("@arcgis/core/layers/support/FeatureReductionCluster.js"),
+          import("@arcgis/core/core/reactiveUtils.js"),
         ]);
         if (cancelled || !containerRef.current) return;
 
@@ -110,16 +171,23 @@ export function ThreatMap({
           ? "arcgis/navigation-night"
           : new Basemap({
               baseLayers: [
-                new WebTileLayer({
-                  urlTemplate:
-                    "https://{subDomain}.basemaps.cartocdn.com/dark_all/{level}/{col}/{row}.png",
-                  subDomains: ["a", "b", "c", "d"],
-                  copyright: "OpenStreetMap contributors, CARTO",
+                new TileLayer({
+                  url: ARCGIS_BASE_TILE_SERVICE,
+                  title: "ArcGIS World Imagery",
+                  effect: "brightness(72%) saturate(125%) contrast(112%)",
+                }),
+              ],
+              referenceLayers: [
+                new TileLayer({
+                  url: ARCGIS_REFERENCE_TILE_SERVICE,
+                  title: "ArcGIS Boundaries and Places",
+                  opacity: 0.88,
                 }),
               ],
             });
 
         const map = new ArcGISMap({ basemap });
+        let nextObjectId = 1;
         const createGraphics = (items: Indicator[]) =>
           items
             .filter(
@@ -132,7 +200,7 @@ export function ThreatMap({
                 Number.isFinite(item.longitude),
             )
             .map(
-              (item, index) =>
+              (item) =>
                 new Graphic({
                   geometry: new Point({
                     longitude: item.longitude,
@@ -140,10 +208,13 @@ export function ThreatMap({
                     spatialReference: { wkid: 4326 },
                   }),
                   attributes: {
-                    object_id: index + 1,
+                    object_id: nextObjectId++,
                     ioc_id: item.id,
                     value: item.value,
                     family: item.malwareFamily,
+                    family_color: String(
+                      threatFamilyColorIndex(item.malwareFamily),
+                    ),
                     confidence: item.confidence,
                     country: item.country,
                     source: item.sourceFeed,
@@ -156,7 +227,17 @@ export function ThreatMap({
                 }),
             );
         createGraphicsRef.current = createGraphics;
-        const graphics = createGraphics(indicatorsRef.current);
+        const createDeleteGraphics = (objectIds: Array<number | string>) =>
+          objectIds.map(
+            (objectId) => new Graphic({ attributes: { object_id: objectId } }),
+          );
+        createDeleteGraphicsRef.current = createDeleteGraphics;
+        const initialItems = indicatorsRef.current;
+        const graphics = createGraphics(initialItems);
+        activeObjectIdsRef.current = graphics.map(
+          (graphic) => graphic.attributes.object_id,
+        );
+        lastQueuedIndicatorsRef.current = initialItems;
         const createPrecisionGraphics = (items: Indicator[]) =>
           items
             .filter(
@@ -184,43 +265,78 @@ export function ThreatMap({
                     radiusUnit: "kilometers",
                   }),
                   symbol: new SimpleFillSymbol({
-                    color: [110, 231, 216, 0.08],
-                    outline: { color: [110, 231, 216, 0.48], width: 1 },
+                    color: [139, 92, 246, 0.035],
+                    outline: { color: [167, 139, 250, 0.3], width: 0.8 },
                   }),
                   attributes: { ioc_id: item.id },
                 }),
             );
         createPrecisionGraphicsRef.current = createPrecisionGraphics;
 
-        const pointRenderer = new SimpleRenderer({
-          symbol: new SimpleMarkerSymbol({
-            color: [110, 231, 216, 0.3],
-            outline: { color: [154, 245, 232, 0.92], width: 1.2 },
-            size: 17,
-          }),
-          visualVariables: [
-            {
-              type: "color",
-              field: "confidence",
-              stops: [
-                { value: 0, color: "#8393a7" },
-                { value: 39, color: "#8393a7" },
-                { value: 40, color: "#f4b860" },
-                { value: 69, color: "#f4b860" },
-                { value: 70, color: "#6ee7d8" },
-                { value: 100, color: "#6ee7d8" },
-              ],
+        const createPointRenderer = () =>
+          new UniqueValueRenderer({
+            field: "family_color",
+            defaultSymbol: new SimpleMarkerSymbol({
+              color: "#94a3b8",
+              outline: { color: [241, 245, 249, 0.86], width: 1 },
+              size: 9,
+            }),
+            uniqueValueInfos: THREAT_FAMILY_COLORS.map((color, index) => ({
+              value: String(index),
+              label: `Threat family color ${index + 1}`,
+              symbol: new SimpleMarkerSymbol({
+                color,
+                outline: { color: [248, 250, 252, 0.88], width: 1 },
+                size: 9,
+              }),
+            })),
+            visualVariables: [
+              {
+                type: "opacity",
+                field: "confidence",
+                stops: [
+                  { value: 0, opacity: 0.38 },
+                  { value: 60, opacity: 0.72 },
+                  { value: 100, opacity: 1 },
+                ],
+              },
+            ],
+          });
+        createPointRendererRef.current = createPointRenderer;
+        const createClusterReduction = () =>
+          new FeatureReductionCluster({
+            clusterRadius: "54px",
+            clusterMinSize: "24px",
+            clusterMaxSize: "42px",
+            symbol: new SimpleMarkerSymbol({
+              color: [10, 18, 34, 0.9],
+              outline: { color: [167, 139, 250, 0.95], width: 2 },
+            }),
+            popupTemplate: {
+              title: "Threat infrastructure cluster",
+              content:
+                "This area contains <b>{cluster_count}</b> IOC observations.",
             },
-            {
-              type: "size",
-              field: "confidence",
-              minDataValue: 50,
-              maxDataValue: 100,
-              minSize: 11,
-              maxSize: 27,
-            },
-          ],
-        });
+            labelingInfo: [
+              {
+                deconflictionStrategy: "none",
+                labelExpressionInfo: {
+                  expression: "Text($feature.cluster_count, '#,###')",
+                },
+                symbol: {
+                  type: "text",
+                  color: "#f8fafc",
+                  font: { family: "Inter", size: 10, weight: "bold" },
+                  haloColor: "#080d18",
+                  haloSize: 1.5,
+                },
+                labelPlacement: "center-center",
+              },
+            ],
+          });
+        createClusterReductionRef.current = createClusterReduction;
+
+        const pointRenderer = createPointRenderer();
 
         const layer = new FeatureLayer({
           title: "ThreatMesh IOC observations",
@@ -231,7 +347,12 @@ export function ThreatMap({
             { name: "ioc_id", alias: "Indicator ID", type: "string" },
             { name: "value", alias: "Indicator", type: "string" },
             { name: "family", alias: "Malware family", type: "string" },
-            { name: "confidence", alias: "Confidence", type: "integer" },
+            {
+              name: "family_color",
+              alias: "Family color index",
+              type: "string",
+            },
+            { name: "confidence", alias: "Confidence", type: "double" },
             { name: "country", alias: "Country", type: "string" },
             { name: "source", alias: "Source", type: "string" },
             { name: "provenance", alias: "Provenance", type: "string" },
@@ -271,11 +392,35 @@ export function ThreatMap({
           map,
           center: [18, 26],
           zoom: 2.2,
-          constraints: { minZoom: 1.5, maxZoom: 14, snapToZoom: false },
+          constraints: { minZoom: 1, maxZoom: 14, snapToZoom: false },
+          attributionVisible: true,
           ui: { components: [] },
           popup: { dockEnabled: false },
-          background: { color: [8, 11, 18, 1] },
+          background: { color: [3, 8, 18, 1] },
         });
+
+        fatalErrorHandle = reactiveUtils.watch(
+          () => view.fatalError,
+          (fatalError: unknown) => {
+            if (!fatalError || cancelled) return;
+            setMapState("fallback");
+            recoveryController?.abort();
+            recoveryController = new AbortController();
+            try {
+              view.tryFatalErrorRecovery();
+              void reactiveUtils
+                .whenOnce(() => view.ready && !view.fatalError, {
+                  signal: recoveryController.signal,
+                })
+                .then(() => {
+                  if (!cancelled) setMapState("ready");
+                })
+                .catch(() => undefined);
+            } catch {
+              // The interactive raster renderer remains active.
+            }
+          },
+        );
 
         const readiness = view.when().then(() => true);
         const loaded = await Promise.race([
@@ -307,55 +452,110 @@ export function ThreatMap({
           if (selected) onSelectRef.current(selected);
         });
 
-        const cluster = new FeatureReductionCluster({
-          clusterRadius: "64px",
-          popupTemplate: {
-            title: "Indicator cluster",
-            content:
-              "This area contains <b>{cluster_count}</b> IOC observations.",
-          },
-          labelingInfo: [
-            {
-              deconflictionStrategy: "none",
-              labelExpressionInfo: {
-                expression: "Text($feature.cluster_count, '#,###')",
-              },
-              symbol: {
-                type: "text",
-                color: "#f7fafc",
-                font: { family: "Inter", size: 11, weight: "bold" },
-                haloColor: "#172029",
-                haloSize: 1,
-              },
-              labelPlacement: "center-center",
-            },
-          ],
-        });
-        layer.featureReduction = cluster;
+        layer.featureReduction = createClusterReduction();
       } catch (error) {
         console.error("ArcGIS map initialization failed", error);
-        if (!cancelled) setMapState("fallback");
+        fatalErrorHandle?.remove();
+        recoveryController?.abort();
+        if (view) {
+          view.destroy();
+          view = undefined;
+        }
+        if (!cancelled) {
+          viewRef.current = null;
+          layerRef.current = null;
+          precisionLayerRef.current = null;
+          setMapState("fallback");
+        }
       }
     };
 
     void initialize();
     return () => {
       cancelled = true;
+      disposedRef.current = true;
+      editVersionRef.current += 1;
+      recoveryController?.abort();
+      fatalErrorHandle?.remove();
       if (view) view.destroy();
       viewRef.current = null;
       layerRef.current = null;
       precisionLayerRef.current = null;
       createGraphicsRef.current = null;
+      createDeleteGraphicsRef.current = null;
+      createPointRendererRef.current = null;
+      createClusterReductionRef.current = null;
       createPrecisionGraphicsRef.current = null;
+      lastQueuedIndicatorsRef.current = null;
+      activeObjectIdsRef.current = [];
+      editQueueRef.current = Promise.resolve();
     };
   }, []);
 
   useEffect(() => {
     const layer = layerRef.current;
     const createGraphics = createGraphicsRef.current;
-    if (!layer || !createGraphics) return;
-    layer.source.removeAll();
-    layer.source.addMany(createGraphics(indicators));
+    const createDeleteGraphics = createDeleteGraphicsRef.current;
+    if (
+      !layer ||
+      !createGraphics ||
+      !createDeleteGraphics ||
+      indicators === lastQueuedIndicatorsRef.current
+    )
+      return;
+
+    const nextIndicators = indicators;
+    const version = ++editVersionRef.current;
+    lastQueuedIndicatorsRef.current = nextIndicators;
+    editQueueRef.current = editQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (disposedRef.current || layerRef.current !== layer) return;
+        await layer.load();
+        const queriedObjectIds: Array<number | string> =
+          await layer.queryObjectIds({
+            where: "1=1",
+            timeExtent: null,
+          });
+        if (
+          disposedRef.current ||
+          layerRef.current !== layer ||
+          version !== editVersionRef.current
+        )
+          return;
+
+        const objectIds = Array.from(
+          new Set([...activeObjectIdsRef.current, ...(queriedObjectIds ?? [])]),
+        );
+        const nextGraphics = createGraphics(nextIndicators);
+        const result = await layer.applyEdits({
+          deleteFeatures: createDeleteGraphics(objectIds),
+          addFeatures: nextGraphics,
+        });
+        const failures = [
+          ...(result.addFeatureResults ?? []),
+          ...(result.deleteFeatureResults ?? []),
+        ].flatMap((edit: { error?: { message?: string } }) =>
+          edit.error ? [edit.error.message ?? "unknown edit failure"] : [],
+        );
+        if (failures.length > 0) {
+          activeObjectIdsRef.current = Array.from(
+            new Set([
+              ...objectIds,
+              ...nextGraphics.map((graphic) => graphic.attributes.object_id),
+            ]),
+          );
+          throw new Error(`Feature edits rejected: ${failures.join("; ")}`);
+        }
+        activeObjectIdsRef.current = nextGraphics.map(
+          (graphic) => graphic.attributes.object_id,
+        );
+      })
+      .catch((error: unknown) => {
+        if (version === editVersionRef.current)
+          lastQueuedIndicatorsRef.current = null;
+        console.error("ArcGIS indicator update failed", error);
+      });
   }, [indicators, mapState]);
 
   useEffect(() => {
@@ -372,71 +572,42 @@ export function ThreatMap({
     const layer = layerRef.current;
     const precisionLayer = precisionLayerRef.current;
     const view = viewRef.current;
-    if (!layer || !precisionLayer || !view) return;
+    const createPointRenderer = createPointRendererRef.current;
+    const createClusterReduction = createClusterReductionRef.current;
+    if (
+      !layer ||
+      !precisionLayer ||
+      !view ||
+      !createPointRenderer ||
+      !createClusterReduction
+    )
+      return;
     let cancelled = false;
     const setMode = async () => {
-      const [
-        { default: SimpleRenderer },
-        { default: SimpleMarkerSymbol },
-        { default: HeatmapRenderer },
-        { default: FeatureReductionCluster },
-      ] = await Promise.all([
-        import("@arcgis/core/renderers/SimpleRenderer.js"),
-        import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
-        import("@arcgis/core/renderers/HeatmapRenderer.js"),
-        import("@arcgis/core/layers/support/FeatureReductionCluster.js"),
-      ]);
+      const { default: HeatmapRenderer } =
+        await import("@arcgis/core/renderers/HeatmapRenderer.js");
       if (cancelled) return;
       precisionLayer.visible = mode === "uncertainty";
       if (mode === "heatmap") {
         layer.featureReduction = null;
         layer.renderer = new HeatmapRenderer({
           field: "confidence",
-          radius: 34,
+          radius: 27,
           minDensity: 0,
           maxDensity: 0.08,
           colorStops: [
-            { ratio: 0, color: [8, 11, 18, 0] },
-            { ratio: 0.2, color: [72, 68, 177, 0.35] },
-            { ratio: 0.45, color: [63, 143, 176, 0.62] },
-            { ratio: 0.7, color: [64, 211, 178, 0.8] },
-            { ratio: 1, color: [255, 191, 99, 0.95] },
+            { ratio: 0, color: [3, 8, 24, 0] },
+            { ratio: 0.12, color: [49, 46, 129, 0.18] },
+            { ratio: 0.34, color: [124, 58, 237, 0.48] },
+            { ratio: 0.56, color: [236, 72, 153, 0.7] },
+            { ratio: 0.78, color: [249, 115, 22, 0.86] },
+            { ratio: 1, color: [253, 224, 71, 0.98] },
           ],
         });
       } else {
-        layer.renderer = new SimpleRenderer({
-          symbol: new SimpleMarkerSymbol({
-            color: [110, 231, 216, 0.3],
-            outline: { color: [154, 245, 232, 0.9], width: 1.2 },
-            size: 17,
-          }),
-          visualVariables: [
-            {
-              type: "color",
-              field: "confidence",
-              stops: [
-                { value: 0, color: "#8393a7" },
-                { value: 39, color: "#8393a7" },
-                { value: 40, color: "#f4b860" },
-                { value: 69, color: "#f4b860" },
-                { value: 70, color: "#6ee7d8" },
-                { value: 100, color: "#6ee7d8" },
-              ],
-            },
-            {
-              type: "size",
-              field: "confidence",
-              minDataValue: 50,
-              maxDataValue: 100,
-              minSize: 11,
-              maxSize: 27,
-            },
-          ],
-        });
+        layer.renderer = createPointRenderer();
         layer.featureReduction =
-          mode === "clusters"
-            ? new FeatureReductionCluster({ clusterRadius: "64px" })
-            : null;
+          mode === "clusters" ? createClusterReduction() : null;
       }
     };
     void setMode();
@@ -465,6 +636,10 @@ export function ThreatMap({
   }, [filters, mapState]);
 
   const adjustZoom = (delta: number) => {
+    if (mapState === "fallback") {
+      rasterMapRef.current?.adjustZoom(delta);
+      return;
+    }
     const view = viewRef.current;
     if (view)
       view
@@ -472,10 +647,15 @@ export function ThreatMap({
         .catch(() => undefined);
   };
 
-  const recenter = () =>
+  const recenter = () => {
+    if (mapState === "fallback") {
+      rasterMapRef.current?.recenter();
+      return;
+    }
     viewRef.current
       ?.goTo({ center: [18, 26], zoom: 2.2 }, { duration: 420 })
       .catch(() => undefined);
+  };
 
   return (
     <div
@@ -485,6 +665,8 @@ export function ThreatMap({
         ref={containerRef}
         className="threat-map__canvas"
         aria-label="Interactive map of approximate threat infrastructure locations"
+        aria-hidden={mapState === "fallback"}
+        inert={mapState === "fallback"}
       />
       {mapState === "loading" && (
         <div className="map-loading">
@@ -497,104 +679,16 @@ export function ThreatMap({
         </div>
       )}
       {mapState === "fallback" && (
-        <div
-          className="map-fallback"
-          aria-label="Simplified coordinate view of threat infrastructure"
-        >
-          <svg
-            viewBox="0 0 1000 500"
-            role="img"
-            aria-label={`${fallbackIndicators.length} geolocated threat indicators`}
-          >
-            <defs>
-              <pattern
-                id="fallback-grid"
-                width="50"
-                height="50"
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d="M50 0H0V50"
-                  fill="none"
-                  stroke="#1b2934"
-                  strokeWidth="1"
-                />
-              </pattern>
-              <filter id="point-glow">
-                <feGaussianBlur stdDeviation="5" />
-              </filter>
-            </defs>
-            <rect width="1000" height="500" fill="url(#fallback-grid)" />
-            <g className="fallback-land">
-              <path d="M70 120 118 76l93-30 85 28 47 54-17 49-57 21-33 62-55-8-28-54-61-18Z" />
-              <path d="m262 277 52 24 29 61-20 91-41 31-24-91-26-59Z" />
-              <path d="m460 100 73-49 85 17 49 35 95 7 109 60-51 41-89-9-44 37-55-11-29 48-61-18-19-51-68-27-31-43Z" />
-              <path d="m524 267 80 6 42 57-27 100-47 24-49-81-26-61Z" />
-              <path d="m810 348 63-26 61 45-13 55-73 5-44-37Z" />
-            </g>
-            {fallbackIndicators.map((item) => {
-              const x = ((item.longitude! + 180) / 360) * 1000;
-              const y = ((90 - item.latitude!) / 180) * 500;
-              const color =
-                item.confidence >= 70
-                  ? "#6ee7d8"
-                  : item.confidence >= 40
-                    ? "#f4b860"
-                    : "#8393a7";
-              return (
-                <g
-                  key={item.id}
-                  className="fallback-point"
-                  onClick={() => onSelectRef.current(item)}
-                >
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r="13"
-                    fill={color}
-                    opacity=".15"
-                    filter="url(#point-glow)"
-                  />
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={item.confidence >= 70 ? 5 : 4}
-                    fill={color}
-                    opacity=".92"
-                  />
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r="9"
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="1"
-                    opacity=".28"
-                  />
-                </g>
-              );
-            })}
-          </svg>
-          <div className="map-fallback__notice">
-            <AlertTriangle size={13} />
-            <span>
-              {mode === "uncertainty"
-                ? "Illustrative context halos require ArcGIS WebGL · points only in fallback"
-                : "Simplified coordinate view · ArcGIS WebGL renderer unavailable"}
-            </span>
-          </div>
+        <div className="map-fallback">
+          <ArcGisRasterMap
+            ref={rasterMapRef}
+            indicators={fallbackIndicators}
+            mode={mode}
+            onSelect={(indicator) => onSelectRef.current(indicator)}
+          />
         </div>
       )}
-      {mapState === "error" && (
-        <div className="map-error">
-          <AlertTriangle size={24} />
-          <strong>Map rendering unavailable</strong>
-          <span>
-            The indicator list remains available. Check browser WebGL support or
-            the tile connection.
-          </span>
-        </div>
-      )}
+      <div className="map-atmosphere" aria-hidden="true" />
       <div className="map-mode" aria-label="Map display mode">
         <Layers3 size={15} />
         {(["clusters", "heatmap", "uncertainty"] as MapMode[]).map((value) => (
@@ -603,16 +697,23 @@ export function ThreatMap({
             type="button"
             onClick={() => onModeChange(value)}
             className={mode === value ? "is-active" : ""}
+            aria-pressed={mode === value}
           >
-            {value === "uncertainty" ? "Context halo" : value}
+            {value === "uncertainty" ? "Location context" : value}
           </button>
         ))}
+      </div>
+      <div className="map-basemap-badge">
+        <Satellite size={12} />
+        <span>ArcGIS World Imagery</span>
+        <i aria-hidden="true" />
       </div>
       <div className="map-controls">
         <button
           type="button"
           onClick={() => adjustZoom(1)}
           aria-label="Zoom in"
+          disabled={mapState === "loading"}
         >
           <Plus size={17} />
         </button>
@@ -620,10 +721,16 @@ export function ThreatMap({
           type="button"
           onClick={() => adjustZoom(-1)}
           aria-label="Zoom out"
+          disabled={mapState === "loading"}
         >
           <Minus size={17} />
         </button>
-        <button type="button" onClick={recenter} aria-label="Reset map extent">
+        <button
+          type="button"
+          onClick={recenter}
+          aria-label="Reset map extent"
+          disabled={mapState === "loading"}
+        >
           <LocateFixed size={17} />
         </button>
         <button
@@ -635,27 +742,47 @@ export function ThreatMap({
         </button>
       </div>
       <div className="map-legend">
-        <span>
-          <i className="map-legend__dot map-legend__dot--high" />
-          High confidence
-        </span>
-        <span>
-          <i className="map-legend__dot map-legend__dot--medium" />
-          Medium
-        </span>
-        <span>
-          <i className="map-legend__dot map-legend__dot--low" />
-          Low
-        </span>
+        <strong>
+          {mode === "heatmap" ? "Threat density" : "Top families"}
+        </strong>
+        {mode === "heatmap" ? (
+          <span className="map-legend__heat-scale">
+            <small>Low</small>
+            <i />
+            <small>High</small>
+          </span>
+        ) : (
+          <>
+            {familyLegend.items.map(({ family, count }) => (
+              <span key={family} title={`${family} · ${count} mapped`}>
+                <i
+                  className="map-legend__dot"
+                  style={{
+                    backgroundColor: threatFamilyColor(family),
+                    color: threatFamilyColor(family),
+                  }}
+                />
+                {family}
+              </span>
+            ))}
+            {familyLegend.remaining > 0 && (
+              <span className="map-legend__more">
+                +{familyLegend.remaining} more
+              </span>
+            )}
+          </>
+        )}
         <span className="map-legend__note">
           {mode === "uncertainty"
-            ? "Illustrative geodesic context radius · not an accuracy or confidence bound"
-            : "Observed-host geolocation · approximate"}
+            ? "Ring = approximate location context"
+            : mode === "heatmap"
+              ? "Brighter areas = more observations"
+              : "Color = family · opacity = confidence"}
         </span>
       </div>
-      <div className="map-attribution">
-        ArcGIS Maps SDK · Basemap © Esri or © OpenStreetMap contributors, CARTO
-      </div>
+      {mapState === "fallback" && (
+        <div className="map-attribution">{ARCGIS_RASTER_ATTRIBUTION}</div>
+      )}
     </div>
   );
 }
