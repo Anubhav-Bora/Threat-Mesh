@@ -13,7 +13,7 @@ from app.analysis_scope import resolve_analysis_scope
 from app.errors import AppError
 from app.genai.prompts import REPORT_SYSTEM
 from app.genai.providers import LLMProvider
-from app.models import IOC, Campaign, Report
+from app.models import IOC, Campaign, Report, ReportCadence
 
 
 class ReportService:
@@ -30,37 +30,41 @@ class ReportService:
         *,
         period_start: datetime | None = None,
         period_end: datetime | None = None,
+        cadence: ReportCadence = ReportCadence.WEEKLY,
     ) -> Report:
         end = _utc(period_end or datetime.now(UTC))
         start = _utc(period_start or (end - timedelta(days=7)))
         async with self.session_factory() as session:
             facts = await self.collect_facts(session, start, end)
-            if facts["analysis_scope"] == "none":
-                raise AppError(
-                    409,
-                    "report_no_evidence",
-                    "No IOC observations exist in the requested period; "
-                    "report generation was not started.",
-                    details={
-                        "period_start": start.isoformat(),
-                        "period_end": end.isoformat(),
-                    },
-                )
-            prompt = (
-                "Reporting period (UTC): "
-                f"{start.isoformat()} through {end.isoformat()}\n\n"
-                "Deterministically computed facts (JSON):\n"
-                f"```json\n{json.dumps(facts, indent=2, default=str)}\n```\n"
-                "Write the report. Do not add facts absent from this JSON."
+        if facts["analysis_scope"] == "none":
+            raise AppError(
+                409,
+                "report_no_evidence",
+                "No IOC observations exist in the requested period; "
+                "report generation was not started.",
+                details={
+                    "period_start": start.isoformat(),
+                    "period_end": end.isoformat(),
+                },
             )
-            response = await self.provider.generate(prompt, system_instruction=REPORT_SYSTEM)
+        facts["report_cadence"] = cadence.value
+        prompt = (
+            "Reporting period (UTC): "
+            f"{start.isoformat()} through {end.isoformat()}\n\n"
+            "Deterministically computed facts (JSON):\n"
+            f"```json\n{json.dumps(facts, indent=2, default=str)}\n```\n"
+            "Write the report. Do not add facts absent from this JSON."
+        )
+        response = await self.provider.generate(prompt, system_instruction=REPORT_SYSTEM)
+        async with self.session_factory() as session:
             report = Report(
                 period_start=start,
                 period_end=end,
-                title=f"ThreatMesh Weekly CTI Report — {end.date().isoformat()}",
+                title=f"ThreatMesh {cadence.value.title()} CTI Report — {end.date().isoformat()}",
                 report_text=response.text,
                 provider=response.provider,
                 model=response.model,
+                cadence=cadence,
                 facts_json=facts,
                 is_demo=facts["analysis_scope"] == "demo",
             )

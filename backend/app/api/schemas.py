@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.enums import IOCType, RuleType
+from app.models.enums import IOCType, ReportCadence, RuleType
 
 
 class ORMModel(BaseModel):
@@ -155,6 +155,7 @@ class ReportSummary(ORMModel):
     title: str
     provider: str
     model: str
+    cadence: ReportCadence
     is_demo: bool
     created_at: datetime
 
@@ -164,25 +165,21 @@ class ReportDetail(ReportSummary):
     facts_json: dict[str, Any]
 
 
-class GenerateReportRequest(BaseModel):
-    period_start: datetime | None = None
-    period_end: datetime | None = None
+class UpdateReportScheduleRequest(BaseModel):
+    cadence: ReportCadence
 
-    @field_validator("period_start", "period_end")
-    @classmethod
-    def normalize_period_datetime(cls, value: datetime | None) -> datetime | None:
-        return _as_utc(value) if value else None
 
-    @model_validator(mode="after")
-    def validate_period(self) -> GenerateReportRequest:
-        now = datetime.now(UTC)
-        if self.period_start and self.period_start > now:
-            raise ValueError("period_start cannot be in the future")
-        if self.period_end and self.period_end > now:
-            raise ValueError("period_end cannot be in the future")
-        if self.period_start and self.period_end and self.period_start >= self.period_end:
-            raise ValueError("period_start must be earlier than period_end")
-        return self
+class ReportScheduleResponse(BaseModel):
+    cadence: ReportCadence
+    scheduler_running: bool
+    provider_configured: bool
+    next_run_at: datetime | None
+    timezone: Literal["UTC"] = "UTC"
+    hour_utc: int
+    weekly_day: str
+    monthly_day: int = 1
+    updated_at: datetime
+    admin_auth_required: bool
 
 
 class AskRequest(BaseModel):

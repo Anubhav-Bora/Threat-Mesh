@@ -22,6 +22,9 @@ def test_baseline_migration_persists_demo_provenance(tmp_path, monkeypatch) -> N
         ioc_columns = {column["name"]: column for column in inspector.get_columns("iocs")}
         campaign_columns = {column["name"]: column for column in inspector.get_columns("campaigns")}
         report_columns = {column["name"]: column for column in inspector.get_columns("reports")}
+        report_schedule_columns = {
+            column["name"]: column for column in inspector.get_columns("report_schedules")
+        }
         ioc_constraints = {
             constraint["name"]: tuple(constraint["column_names"])
             for constraint in inspector.get_unique_constraints("iocs")
@@ -31,6 +34,10 @@ def test_baseline_migration_persists_demo_provenance(tmp_path, monkeypatch) -> N
     for columns in (ioc_columns, campaign_columns, report_columns):
         assert columns["is_demo"]["nullable"] is False
         assert columns["is_demo"]["default"] is not None
+    assert report_columns["cadence"]["nullable"] is False
+    assert report_columns["cadence"]["default"] is not None
+    assert report_schedule_columns["cadence"]["nullable"] is False
+    assert report_schedule_columns["updated_at"]["nullable"] is False
     assert ioc_constraints["uq_iocs_type_key_source"] == (
         "ioc_type",
         "indicator_key",

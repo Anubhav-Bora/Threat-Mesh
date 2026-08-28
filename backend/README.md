@@ -87,8 +87,10 @@ counted as healthy.
 ## Pipeline and endpoints
 
 Scheduled jobs are independent and guarded against overlap: feed ingestion every three hours,
-enrichment every 15 minutes, analysis every six hours, and a weekly report on Monday at 06:00 UTC.
-Jobs do not run immediately on startup unless `RUN_JOBS_ON_STARTUP=true`.
+enrichment every 15 minutes, analysis every six hours, and an automatic report at 06:00 UTC.
+The persisted report cadence is selectable at runtime: weekly runs on the configured weekday
+(Monday by default), while monthly runs on the first day of each month. Jobs do not run
+immediately on startup unless `RUN_JOBS_ON_STARTUP=true`.
 
 Key endpoints:
 
@@ -100,7 +102,8 @@ views can page live data without synthetic rows occupying the bounded result win
 - `GET /api/v1/stats/techniques/trending`
 - `GET /api/v1/campaigns` and `/campaigns/{id}`
 - `GET /api/v1/rules`, `POST /api/v1/rules/generate`, rule download
-- `GET|POST /api/v1/reports`, Markdown download
+- `GET /api/v1/reports`, Markdown download
+- `GET|PUT /api/v1/reports/schedule` — inspect or securely change weekly/monthly cadence
 - `POST /api/v1/assistant/ask` — constrained retrieval first, prose generation second
 - `POST /api/v1/feeds/sync`, `/enrichment/run`, `/analysis/run`
 

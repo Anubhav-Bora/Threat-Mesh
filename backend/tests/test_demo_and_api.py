@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from app.demo_seed import DEMO_IOCS, seed_demo
 from app.detection_rules import DetectionRuleService
+from app.errors import AppError
 from app.genai.providers import StaticProvider
 from app.genai.reports import ReportService
 from app.models import (
@@ -258,36 +259,24 @@ async def test_admin_and_validation_errors_are_structured(client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_future_derived_period_starts_are_rejected(client) -> None:
+async def test_future_assistant_period_starts_are_rejected(client) -> None:
     future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     ask = await client.post(
         "/api/v1/assistant/ask",
         json={"question": "What happened?", "date_from": future},
     )
-    report = await client.post(
-        "/api/v1/reports",
-        json={"period_start": future},
-        headers={"X-API-Key": "test-admin-key"},
-    )
     assert ask.status_code == 422
-    assert report.status_code == 422
     assert "future" in str(ask.json()).lower()
-    assert "future" in str(report.json()).lower()
 
 
 @pytest.mark.asyncio
-async def test_empty_period_report_stops_before_provider_call(client, app) -> None:
+async def test_empty_period_report_stops_before_provider_call(app) -> None:
     provider = StaticProvider("This must not be generated.")
-    app.state.llm_provider_override = provider
 
-    response = await client.post(
-        "/api/v1/reports",
-        json={},
-        headers={"X-API-Key": "test-admin-key"},
-    )
+    with pytest.raises(AppError, match="No IOC observations") as error:
+        await ReportService(app.state.database.session_factory, provider).generate()
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "report_no_evidence"
+    assert error.value.code == "report_no_evidence"
     assert provider.prompts == []
     async with app.state.database.session_factory() as session:
         assert await session.scalar(select(func.count(Report.id))) == 0
@@ -317,19 +306,7 @@ async def test_api_dates_normalize_mixed_naive_and_aware_values(client, app) -> 
             "date_to": "2026-02-01T00:00:00Z",
         },
     )
-    valid_report = await client.post(
-        "/api/v1/reports",
-        json={
-            "period_start": "2026-01-01T00:00:00",
-            "period_end": "2026-02-01T00:00:00Z",
-        },
-        headers={"X-API-Key": "test-admin-key"},
-    )
-    assert (valid_iocs.status_code, valid_ask.status_code, valid_report.status_code) == (
-        200,
-        200,
-        201,
-    )
+    assert (valid_iocs.status_code, valid_ask.status_code) == (200, 200)
 
     invalid_iocs = await client.get(
         "/api/v1/iocs",
@@ -346,19 +323,7 @@ async def test_api_dates_normalize_mixed_naive_and_aware_values(client, app) -> 
             "date_to": "2026-01-01T00:00:00Z",
         },
     )
-    invalid_report = await client.post(
-        "/api/v1/reports",
-        json={
-            "period_start": "2026-02-01T00:00:00",
-            "period_end": "2026-01-01T00:00:00Z",
-        },
-        headers={"X-API-Key": "test-admin-key"},
-    )
-    assert (invalid_iocs.status_code, invalid_ask.status_code, invalid_report.status_code) == (
-        422,
-        422,
-        422,
-    )
+    assert (invalid_iocs.status_code, invalid_ask.status_code) == (422, 422)
 
 
 @pytest.mark.asyncio
@@ -401,13 +366,8 @@ async def test_retrieval_grounded_ai_and_report_routes(client, app, settings) ->
         "report:"
     )
 
-    report = await client.post(
-        "/api/v1/reports",
-        json={},
-        headers={"X-API-Key": "test-admin-key"},
-    )
-    assert report.status_code == 201
-    assert report.json()["provider"] == "static"
+    report = await ReportService(app.state.database.session_factory, provider).generate()
+    assert report.provider == "static"
 
 
 @pytest.mark.asyncio

@@ -108,7 +108,7 @@ workspace, so sample records are never silently presented as live observations.
 
 ### Language generation
 
-Language models sit after retrieval. The weekly report receives aggregates
+Language models sit after retrieval. Each scheduled report receives aggregates
 already computed by ThreatMesh. The assistant receives the user's question and
 a bounded set of matching database facts with a server-built evidence
 allow-list. Provider-supplied citation IDs are checked against that exact

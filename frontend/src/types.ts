@@ -76,6 +76,7 @@ export interface AttackTechnique {
 
 export interface ThreatReport {
   id: string;
+  cadence: ReportCadence;
   title: string;
   periodStart: string;
   periodEnd: string;
@@ -90,6 +91,21 @@ export interface ThreatReport {
   topFamilies: Array<{ name: string; count: number }>;
   relatedCampaignIds: string[];
   generatedBy: "gemini" | "ollama" | "analyst" | "demo";
+}
+
+export type ReportCadence = "weekly" | "monthly";
+
+export interface ReportSchedule {
+  cadence: ReportCadence;
+  schedulerRunning: boolean;
+  providerConfigured: boolean;
+  adminAuthRequired: boolean;
+  nextRunAt: string | null;
+  timezone: string;
+  hourUtc: number;
+  weeklyDay: string;
+  monthlyDay: number;
+  updatedAt: string;
 }
 
 export interface DetectionRule {

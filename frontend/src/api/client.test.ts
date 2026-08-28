@@ -292,6 +292,7 @@ describe("FastAPI client contract", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({
         id: 12,
+        cadence: "weekly",
         title: "Weekly CTI report",
         period_start: "2026-08-01T00:00:00Z",
         period_end: "2026-08-08T00:00:00Z",
@@ -308,6 +309,7 @@ describe("FastAPI client contract", () => {
     );
     const result = await threatApi.report("12");
     expect(result.data).toMatchObject({
+      cadence: "weekly",
       content: reportText,
       executiveSummary: "Observed facts only.",
       keyFindings: ["Finding one", "Finding two"],
@@ -318,6 +320,79 @@ describe("FastAPI client contract", () => {
       status: "generated",
       isDemo: false,
     });
+  });
+
+  it("normalizes the public automatic report schedule", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        cadence: "monthly",
+        scheduler_running: true,
+        provider_configured: true,
+        admin_auth_required: true,
+        next_run_at: "2026-09-01T06:00:00Z",
+        timezone: "UTC",
+        hour_utc: 6,
+        weekly_day: "mon",
+        monthly_day: 1,
+        updated_at: "2026-08-28T09:00:00Z",
+      }),
+    );
+
+    const result = await threatApi.reportSchedule();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/reports/schedule");
+    expect(result).toMatchObject({
+      mode: "live",
+      data: {
+        cadence: "monthly",
+        schedulerRunning: true,
+        providerConfigured: true,
+        adminAuthRequired: true,
+        nextRunAt: "2026-09-01T06:00:00Z",
+        timezone: "UTC",
+        hourUtc: 6,
+        weeklyDay: "mon",
+        monthlyDay: 1,
+        updatedAt: "2026-08-28T09:00:00Z",
+      },
+    });
+  });
+
+  it("uses the administrator key only as a one-request schedule header", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        jsonResponse({
+          cadence: "weekly",
+          scheduler_running: true,
+          provider_configured: true,
+          admin_auth_required: true,
+          next_run_at: "2026-08-31T06:00:00Z",
+          timezone: "UTC",
+          hour_utc: 6,
+          weekly_day: "mon",
+          monthly_day: 1,
+          updated_at: "2026-08-28T09:00:00Z",
+        }),
+      );
+
+    await threatApi.updateReportSchedule("weekly", "single-use-key");
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/reports/schedule");
+    expect(init).toMatchObject({
+      method: "PUT",
+      headers: expect.objectContaining({ "X-API-Key": "single-use-key" }),
+      body: JSON.stringify({ cadence: "weekly" }),
+    });
+    expect(String(init?.body)).not.toContain("single-use-key");
+
+    await threatApi.updateReportSchedule("monthly", "");
+    const [, unauthenticatedInit] = fetchMock.mock.calls[1] ?? [];
+    expect(unauthenticatedInit?.headers).not.toHaveProperty("X-API-Key");
+    expect(unauthenticatedInit?.body).toBe(
+      JSON.stringify({ cadence: "monthly" }),
+    );
   });
 
   it("uses rule corroboration and leaves unsupported risk unassessed", async () => {

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
@@ -22,7 +23,16 @@ from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.types import UserDefinedType
 
 from app.models.base import Base, TimestampMixin, utcnow
-from app.models.enums import FeedRunStatus, IOCType, RuleType
+from app.models.enums import FeedRunStatus, IOCType, ReportCadence, RuleType
+
+
+def report_cadence_type() -> Enum:
+    return Enum(
+        ReportCadence,
+        native_enum=False,
+        length=16,
+        values_callable=lambda enum: [item.value for item in enum],
+    )
 
 
 class GeographyPoint(UserDefinedType[str]):
@@ -189,10 +199,41 @@ class Report(Base):
     report_text: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
+    cadence: Mapped[ReportCadence] = mapped_column(
+        report_cadence_type(),
+        default=ReportCadence.WEEKLY,
+        server_default=ReportCadence.WEEKLY.value,
+        nullable=False,
+    )
     facts_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     is_demo: Mapped[bool] = mapped_column(default=False, server_default=false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )
+
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="report_schedule_singleton"),
+        CheckConstraint(
+            "cadence IN ('weekly', 'monthly')",
+            name="report_schedule_cadence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    cadence: Mapped[ReportCadence] = mapped_column(
+        report_cadence_type(),
+        default=ReportCadence.WEEKLY,
+        server_default=ReportCadence.WEEKLY.value,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+        nullable=False,
     )
 
 

@@ -37,7 +37,7 @@ described as low, medium, and high *confidence*, not risk or severity.
 
 The shared presentation bands are **high ≥ 70**, **medium 40–69.9**, and
 **low < 40**. The default detection-candidate threshold is 70, so the dashboard,
-weekly report, API summary, and rule workflow reconcile to the same boundary.
+scheduled report, API summary, and rule workflow reconcile to the same boundary.
 
 ## Campaign candidates
 

@@ -3022,8 +3022,162 @@ input[type="range"] {
 .report-index__head strong {
   font-size: 13px;
 }
+.report-schedule {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 100% 0%, rgb(129 120 245 / 8%), transparent 42%),
+    rgb(10 16 23 / 45%);
+}
+.report-schedule__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.report-schedule__head > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.report-schedule__head strong {
+  color: var(--text);
+  font-size: 10px;
+}
+.report-schedule__provider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgb(110 231 216 / 12%);
+  border-radius: 7px;
+  color: var(--teal);
+  background: rgb(110 231 216 / 4%);
+  font-size: 7.5px;
+}
+.report-schedule__provider span {
+  color: var(--muted);
+}
+.report-schedule__provider strong {
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 7.5px;
+}
+.report-schedule__provider--warning {
+  border-color: rgb(244 184 96 / 15%);
+  color: var(--amber);
+  background: rgb(244 184 96 / 4%);
+}
+.report-schedule__choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 11px;
+}
+.report-schedule__choices button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid #2d3948;
+  border-radius: 8px;
+  color: var(--text-2);
+  background: rgb(15 23 33 / 75%);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+.report-schedule__choices button:hover {
+  border-color: rgb(129 120 245 / 38%);
+}
+.report-schedule__choices button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.report-schedule__choices button.is-selected {
+  border-color: rgb(129 120 245 / 58%);
+  color: #e6e3ff;
+  background: rgb(129 120 245 / 12%);
+  box-shadow: inset 0 0 0 1px rgb(129 120 245 / 8%);
+}
+.report-schedule__choices strong {
+  font-size: 9px;
+}
+.report-schedule__choices span {
+  color: var(--muted);
+  font-size: 7px;
+}
+.report-schedule__next {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid rgb(103 183 247 / 11%);
+  border-radius: 8px;
+  color: var(--blue);
+  background: rgb(103 183 247 / 4%);
+}
+.report-schedule__next > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.report-schedule__next span,
+.report-schedule__next small {
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.4;
+}
+.report-schedule__next strong {
+  color: var(--text-2);
+  font-size: 8px;
+  line-height: 1.4;
+}
+.report-schedule__message,
+.report-schedule__policy,
+.report-schedule__success {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.5;
+}
+.report-schedule__message--error {
+  color: var(--red);
+}
+.report-schedule__message--warning {
+  color: var(--amber);
+}
+.report-schedule__success {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--teal);
+}
+.report-schedule__save {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
+.report-schedule__policy {
+  text-align: center;
+}
 .report-list {
   padding: 5px;
+}
+.report-list__empty {
+  margin: 0;
+  padding: 16px 10px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+  text-align: center;
 }
 .report-list > button {
   display: grid;
@@ -3110,6 +3264,11 @@ input[type="range"] {
 .report-document {
   min-width: 0;
   overflow: hidden;
+}
+.report-document--empty {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
 }
 .report-document__header {
   display: flex;
@@ -3325,6 +3484,25 @@ input[type="range"] {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+.modal input {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #2d3948;
+  border-radius: 8px;
+  outline: none;
+  color: var(--text);
+  background: #0a1018;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+.modal input:focus {
+  border-color: rgb(129 120 245 / 68%);
+  box-shadow: 0 0 0 3px rgb(129 120 245 / 10%);
+}
+.modal input:disabled {
+  opacity: 0.55;
+}
 .modal__notice {
   display: flex;
   align-items: flex-start;
@@ -3335,6 +3513,12 @@ input[type="range"] {
   border-radius: 7px;
   color: #9b8567;
   background: rgb(244 184 96 / 3%);
+  font-size: 8px;
+  line-height: 1.45;
+}
+.modal__error {
+  margin: 10px 0 0;
+  color: var(--red);
   font-size: 8px;
   line-height: 1.45;
 }

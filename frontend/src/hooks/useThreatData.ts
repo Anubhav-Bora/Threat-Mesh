@@ -59,6 +59,12 @@ export const useReport = (id?: string) =>
     enabled: Boolean(id),
     ...options,
   });
+export const useReportSchedule = () =>
+  useQuery({
+    queryKey: ["report-schedule"],
+    queryFn: threatApi.reportSchedule,
+    ...options,
+  });
 export const useRules = () =>
   useQuery({ queryKey: ["rules"], queryFn: threatApi.rules, ...options });
 export const useSummary = () =>

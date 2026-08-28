@@ -7,8 +7,9 @@ from app.models.entities import (
     FeedRun,
     GeoCache,
     Report,
+    ReportSchedule,
 )
-from app.models.enums import FeedRunStatus, IOCType, RuleType
+from app.models.enums import FeedRunStatus, IOCType, ReportCadence, RuleType
 
 __all__ = [
     "AttackTechnique",
@@ -21,5 +22,7 @@ __all__ = [
     "IOC",
     "IOCType",
     "Report",
+    "ReportCadence",
+    "ReportSchedule",
     "RuleType",
 ]

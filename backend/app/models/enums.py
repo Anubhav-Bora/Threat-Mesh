@@ -18,3 +18,8 @@ class FeedRunStatus(StrEnum):
     SUCCEEDED = "succeeded"
     PARTIAL = "partial"
     FAILED = "failed"
+
+
+class ReportCadence(StrEnum):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"

@@ -29,7 +29,7 @@ change confidence, technique mapping, clustering, or response decisions.
 | Geospatial context | Cached backend-only IP/ASN enrichment, PostGIS geography points, clustering, heatmap, and illustrative geodesic uncertainty views |
 | Intelligence analysis | Explainable confidence scoring, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
 | Detection engineering | Stable Sigma and Suricata templates with provenance and mandatory human-review labeling |
-| Analyst reporting | Evidence-bounded weekly CTI reports through configurable Gemini, local Ollama, or no-LLM operation |
+| Analyst reporting | Evidence-bounded weekly or monthly CTI reports with a persisted runtime schedule and configurable Gemini, local Ollama, or no-LLM operation |
 | Natural-language access | Retrieval-first assistant with server-validated evidence IDs, forged-citation rejection, and exact record pivots instead of unrestricted text-to-SQL |
 | Operations | APScheduler jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
 | Portfolio UX | Responsive React/TypeScript console with overview, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |

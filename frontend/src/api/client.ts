@@ -13,6 +13,8 @@ import type {
   DetectionRule,
   FeedRun,
   Indicator,
+  ReportCadence,
+  ReportSchedule,
   SummaryStats,
   ThreatReport,
 } from "../types";
@@ -370,6 +372,7 @@ function markdownList(section: string): string[] {
 function normalizeReport(raw: any, index: number): ThreatReport {
   const facts = get(raw, "factsJson", "facts_json") ?? {};
   const reportText = safeString(get(raw, "reportText", "report_text"));
+  const cadence = safeString(get(raw, "cadence"), "weekly").toLowerCase();
   const executiveSection = markdownSection(reportText, ["Executive Summary"]);
   const findingsSection = markdownSection(reportText, ["Key Findings"]);
   const prioritiesSection = markdownSection(reportText, [
@@ -379,6 +382,7 @@ function normalizeReport(raw: any, index: number): ThreatReport {
   const relatedCampaigns = safeArray(get(facts, "notable_campaigns"));
   return {
     id: safeString(get(raw, "id"), `report-${index}`),
+    cadence: cadence === "monthly" ? "monthly" : "weekly",
     title: safeString(get(raw, "title"), "Threat intelligence report"),
     periodStart: safeString(
       get(raw, "periodStart", "period_start"),
@@ -429,6 +433,29 @@ function normalizeReport(raw: any, index: number): ThreatReport {
     generatedBy: normalizeReportProvider(
       get(raw, "generatedBy", "generated_by", "provider"),
     ),
+  };
+}
+
+function normalizeReportSchedule(raw: any): ReportSchedule {
+  const cadence = safeString(get(raw, "cadence"), "weekly").toLowerCase();
+  const nextRunAt = safeString(get(raw, "nextRunAt", "next_run_at"));
+  return {
+    cadence: cadence === "monthly" ? "monthly" : "weekly",
+    schedulerRunning: Boolean(
+      get(raw, "schedulerRunning", "scheduler_running"),
+    ),
+    providerConfigured: Boolean(
+      get(raw, "providerConfigured", "provider_configured"),
+    ),
+    adminAuthRequired: Boolean(
+      get(raw, "adminAuthRequired", "admin_auth_required"),
+    ),
+    nextRunAt: nextRunAt || null,
+    timezone: safeString(get(raw, "timezone"), "UTC"),
+    hourUtc: safeNumber(get(raw, "hourUtc", "hour_utc")),
+    weeklyDay: safeString(get(raw, "weeklyDay", "weekly_day"), "mon"),
+    monthlyDay: safeNumber(get(raw, "monthlyDay", "monthly_day"), 1),
+    updatedAt: safeString(get(raw, "updatedAt", "updated_at")),
   };
 }
 
@@ -499,9 +526,12 @@ function normalizeFeedRun(raw: any, index: number): FeedRun {
   };
 }
 
-class ApiRequestError extends Error {
-  constructor(public readonly status: number) {
-    super(`API request failed (${status})`);
+export class ApiRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message = `API request failed (${status})`,
+  ) {
+    super(message);
     this.name = "ApiRequestError";
   }
 }
@@ -719,6 +749,51 @@ export const threatApi = {
           0,
         ),
     ),
+  reportSchedule: async (): Promise<ApiResult<ReportSchedule>> => {
+    if (FORCE_DEMO) {
+      return {
+        data: {
+          cadence: "weekly",
+          schedulerRunning: false,
+          providerConfigured: false,
+          adminAuthRequired: false,
+          nextRunAt: null,
+          timezone: "UTC",
+          hourUtc: 6,
+          weeklyDay: "mon",
+          monthlyDay: 1,
+          updatedAt: "",
+        },
+        mode: "demo",
+        reason: "Automatic scheduling is unavailable in demo mode",
+      };
+    }
+    return {
+      data: normalizeReportSchedule(await request<any>("/reports/schedule")),
+      mode: "live",
+    };
+  },
+  updateReportSchedule: async (
+    cadence: ReportCadence,
+    adminApiKey: string,
+  ): Promise<ApiResult<ReportSchedule>> => {
+    if (FORCE_DEMO) {
+      throw new ApiRequestError(
+        409,
+        "Automatic scheduling is unavailable in demo mode",
+      );
+    }
+    return {
+      data: normalizeReportSchedule(
+        await request<any>("/reports/schedule", {
+          method: "PUT",
+          ...(adminApiKey ? { headers: { "X-API-Key": adminApiKey } } : {}),
+          body: JSON.stringify({ cadence }),
+        }),
+      ),
+      mode: "live",
+    };
+  },
   rules: () =>
     withFallback("rules", demoRules, async () =>
       listPayload(await request<any>("/rules")).map(normalizeRule),

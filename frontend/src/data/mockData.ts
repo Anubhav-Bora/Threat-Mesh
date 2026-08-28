@@ -261,6 +261,7 @@ export const demoTechniques: AttackTechnique[] = demoTechniqueCatalog.map(
 export const demoReports: ThreatReport[] = [
   {
     id: 'rpt-demo-snapshot',
+    cadence: 'weekly',
     title: 'ThreatMesh Synthetic Demo Snapshot',
     periodStart: ago(45),
     periodEnd: ago(0),

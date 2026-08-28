@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         application.state.scheduler_manager = scheduler
         if resolved.scheduler_enabled:
-            scheduler.start()
+            await scheduler.start()
         try:
             yield
         finally:
@@ -72,7 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=resolved.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["Accept", "Content-Type", "X-API-Key", "X-Request-ID"],
         expose_headers=["X-Request-ID"],
         max_age=600,

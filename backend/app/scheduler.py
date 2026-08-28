@@ -17,9 +17,12 @@ from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.genai import ReportService, build_provider
 from app.ingestion import IngestionService
+from app.models import ReportCadence, ReportSchedule
+from app.report_scheduling import ReportScheduleStore, calendar_report_period
 from app.scoring import ConfidenceService
 
 logger = logging.getLogger(__name__)
+REPORT_JOB_ID = "scheduled-report"
 
 
 class SchedulerManager:
@@ -34,8 +37,9 @@ class SchedulerManager:
         self.locks = locks
         self.scheduler = AsyncIOScheduler(timezone=UTC)
         self.startup_tasks: set[asyncio.Task[object]] = set()
+        self.report_schedule_lock = asyncio.Lock()
 
-    def start(self) -> None:
+    async def start(self) -> None:
         common = {"coalesce": True, "max_instances": 1, "misfire_grace_time": 900}
         self.scheduler.add_job(
             self.run_feeds,
@@ -58,23 +62,51 @@ class SchedulerManager:
             replace_existing=True,
             **common,
         )
-        self.scheduler.add_job(
-            self.run_weekly_report,
-            CronTrigger(
-                day_of_week=self.settings.report_day_of_week,
-                hour=self.settings.report_hour_utc,
-                minute=0,
-                timezone=UTC,
-            ),
-            id="weekly-report",
-            replace_existing=True,
-            **common,
-        )
+        schedule = await ReportScheduleStore(self.session_factory).get()
+        self.configure_report_job(schedule.cadence)
         self.scheduler.start()
         if self.settings.run_jobs_on_startup:
             task = asyncio.create_task(self.run_startup_pipeline(), name="startup-pipeline")
             self.startup_tasks.add(task)
             task.add_done_callback(self.startup_tasks.discard)
+
+    def configure_report_job(self, cadence: ReportCadence) -> None:
+        if self.scheduler.get_job(REPORT_JOB_ID) is not None:
+            self.scheduler.remove_job(REPORT_JOB_ID)
+        trigger_options: dict[str, object] = {
+            "hour": self.settings.report_hour_utc,
+            "minute": 0,
+            "timezone": UTC,
+        }
+        if cadence is ReportCadence.WEEKLY:
+            trigger_options["day_of_week"] = self.settings.report_day_of_week
+        else:
+            trigger_options["day"] = 1
+        self.scheduler.add_job(
+            self.run_scheduled_report,
+            CronTrigger(**trigger_options),
+            id=REPORT_JOB_ID,
+            kwargs={"cadence": cadence},
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=900,
+        )
+
+    def next_report_run(self) -> datetime | None:
+        if not self.scheduler.running:
+            return None
+        job = self.scheduler.get_job(REPORT_JOB_ID)
+        return job.next_run_time if job is not None else None
+
+    async def update_report_schedule(self, cadence: ReportCadence) -> ReportSchedule:
+        """Serialize cadence persistence and job replacement within this process."""
+
+        async with self.report_schedule_lock:
+            schedule = await ReportScheduleStore(self.session_factory).set(cadence)
+            if self.scheduler.running:
+                self.configure_report_job(schedule.cadence)
+            return schedule
 
     async def shutdown(self) -> None:
         if self.scheduler.running:
@@ -113,12 +145,30 @@ class SchedulerManager:
                 {"mapping": mapping, "scores": scores, "clusters": clusters, "rules": rules},
             )
 
-    async def run_weekly_report(self) -> None:
+    async def run_scheduled_report(self, cadence: ReportCadence) -> None:
         try:
             provider = build_provider(self.settings)
         except AppError as exc:
-            logger.warning("Weekly report skipped: %s", exc.message)
+            logger.warning("Scheduled %s report skipped: %s", cadence.value, exc.message)
             return
+        start, end = calendar_report_period(
+            cadence,
+            datetime.now(UTC),
+            weekly_day=self.settings.report_day_of_week,
+        )
         async with self.locks["reports"]:
-            report = await ReportService(self.session_factory, provider).generate()
+            try:
+                report = await ReportService(self.session_factory, provider).generate(
+                    period_start=start,
+                    period_end=end,
+                    cadence=cadence,
+                )
+            except AppError as exc:
+                if exc.code == "report_no_evidence":
+                    logger.info(
+                        "Scheduled %s report skipped because the completed period has no evidence",
+                        cadence.value,
+                    )
+                    return
+                raise
             logger.info("Scheduled report created: id=%s at=%s", report.id, datetime.now(UTC))

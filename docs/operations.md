@@ -55,10 +55,19 @@ of 1000.
 
 ## Live pipeline operations
 
-Scheduled collection, enrichment, analysis, and weekly report generation are
-enabled or disabled through `.env`. Only one scheduler process should run for a
-database. If the API is scaled horizontally, disable its embedded schedulers
-and move jobs to one dedicated worker or an external scheduler.
+Scheduled collection, enrichment, analysis, and report generation are enabled
+or disabled through `.env`. Report cadence is persisted in the database and can
+be changed between **Weekly** and **Monthly** from the Reports workspace. Weekly
+runs occur on Monday at 06:00 UTC and cover the previous complete calendar week;
+monthly runs occur on day one at 06:00 UTC and cover the previous complete
+calendar month. Changing cadence schedules the next run and never generates a
+report immediately.
+
+The embedded scheduler must remain running for a report to be created. It does
+not backfill a run missed while the backend was stopped. Only one scheduler
+process should run for a database. If the API is scaled horizontally, disable
+its embedded schedulers and move jobs to one dedicated worker or an external
+scheduler.
 
 Administrative mutation routes require `X-API-Key` whenever `ADMIN_API_KEY` is
 configured. They are disabled in production if no key is configured. Generate
@@ -82,6 +91,11 @@ Invoke-RestMethod -Method Post -Headers $headers http://localhost:8000/api/v1/an
 Compose reads `.env` when it creates a container, but PowerShell does not load
 that file into the current shell. The `Read-Host` step deliberately avoids
 placing the key in shell history.
+
+The Reports workspace follows the same boundary when a cadence is changed: it
+asks for the administrator key only when **Save schedule** is selected, sends it
+once in the `X-API-Key` header, and immediately clears it from component memory.
+The key is never stored in browser storage or compiled into the frontend.
 
 Inspect recent connector outcomes without an admin credential:
 
