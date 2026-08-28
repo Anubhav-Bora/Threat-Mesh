@@ -89,8 +89,8 @@ export default function SettingsPage() {
               <span>ArcGIS basemap</span>
               <strong>
                 {hasArcGisKey
-                  ? "ArcGIS Location Platform"
-                  : "Public ArcGIS tile service"}
+                  ? "Public imagery · credentials available"
+                  : "Public ArcGIS World Imagery"}
               </strong>
             </div>
             <Badge tone={hasArcGisKey ? "success" : "neutral"}>
@@ -157,7 +157,7 @@ export default function SettingsPage() {
               <Globe2 size={20} />
             </span>
             <div>
-              <span className="eyebrow">Optional map upgrade</span>
+              <span className="eyebrow">Optional ArcGIS credentials</span>
               <h2>ArcGIS Location Platform</h2>
             </div>
             <Badge tone={hasArcGisKey ? "success" : "neutral"} dot>
@@ -166,9 +166,10 @@ export default function SettingsPage() {
           </div>
           <p>
             ThreatMesh works without a key by using public ArcGIS World Imagery
-            with the ArcGIS Boundaries and Places reference layer. Add a
-            restricted key only if you want the ArcGIS Location Platform
-            navigation-night style.
+            with the ArcGIS Boundaries and Places reference layer. The 3D globe
+            intentionally uses these public services in both configurations; add
+            a restricted key only for premium ArcGIS services you introduce
+            later.
           </p>
           {!hasArcGisKey && (
             <ol className="setup-steps">

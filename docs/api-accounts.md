@@ -27,7 +27,7 @@ Official references: [URLhaus API](https://urlhaus-api.abuse.ch/),
 [ThreatFox API](https://threatfox.abuse.ch/api/), and
 [abuse.ch terms](https://abuse.ch/terms-of-use/).
 
-## 2. ArcGIS Location Platform key (hosted map)
+## 2. ArcGIS Location Platform key (optional)
 
 The ArcGIS browser key is a client credential, not a confidential server
 secret. Vite embeds it in the compiled application. Keeping it out of Git
@@ -50,12 +50,11 @@ method. Monitor the active transaction allowances in the portal; they can
 change. See Esri's [API-key tutorial](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/tutorials/create-an-api-key/online/)
 and [current pricing](https://location.arcgis.com/pricing/).
 
-Without a key, ThreatMesh keeps the complete analytical map usable with public
-ArcGIS World Imagery plus the ArcGIS Boundaries and Places reference service.
-Browsers without WebGL2 use the same ArcGIS tiles through an interactive raster
-renderer. The key only selects the ArcGIS Location Platform navigation-night
-style; it does not unlock indicator, clustering, heatmap, or location-context
-features.
+ThreatMesh's global 3D scene uses public ArcGIS World Imagery plus the ArcGIS
+Boundaries and Places reference service, so no key is required. Browsers without
+WebGL2 use the same ArcGIS tiles through an interactive raster renderer. A key
+is reserved for premium ArcGIS services you may add later; it does not unlock
+observations, heatmaps, or location-context features in the current release.
 
 ## 3. Google Gemini key (optional report and assistant prose)
 

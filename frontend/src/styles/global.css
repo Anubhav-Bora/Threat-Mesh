@@ -1077,22 +1077,31 @@ input[type="range"] {
 }
 .threat-map {
   position: relative;
+  isolation: isolate;
   height: 460px;
   overflow: hidden;
-  background: #080d13;
+  background: radial-gradient(
+    circle at 50% 48%,
+    #0b263c 0%,
+    #050d1c 42%,
+    #020611 100%
+  );
 }
-.threat-map--fullscreen {
+.threat-map.threat-map--fullscreen {
   position: fixed;
   z-index: 90;
-  inset: 12px;
+  inset: 0;
+  width: 100vw;
   height: auto;
-  border: 1px solid #344252;
-  border-radius: 12px;
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
   box-shadow: 0 40px 100px #000;
 }
 .threat-map__canvas {
   width: 100%;
   height: 100%;
+  background: #020712;
 }
 .threat-map__canvas .esri-view-surface::after {
   outline: 0 !important;
@@ -1310,9 +1319,9 @@ input[type="range"] {
   z-index: 3;
   inset: 0;
   background:
-    radial-gradient(circle at 48% 44%, transparent 32%, rgb(2 6 18 / 22%)),
-    linear-gradient(135deg, rgb(14 116 144 / 6%), rgb(88 28 135 / 7%));
-  box-shadow: inset 0 0 54px rgb(1 4 12 / 46%);
+    radial-gradient(circle at 50% 49%, transparent 37%, rgb(2 6 18 / 19%)),
+    linear-gradient(135deg, rgb(14 116 144 / 5%), rgb(88 28 135 / 6%));
+  box-shadow: inset 0 0 72px rgb(1 4 12 / 42%);
   pointer-events: none;
 }
 .map-basemap-badge {

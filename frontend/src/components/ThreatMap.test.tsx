@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Indicator, MapFilters } from "../types";
 import { ARCGIS_RASTER_ATTRIBUTION } from "./ArcGisRasterMap";
@@ -23,18 +30,63 @@ interface MockFeatureLayerHarness {
   featureReduction?: { clusterRadius?: string } | null;
 }
 
+interface MockCamera {
+  position: {
+    longitude: number;
+    latitude: number;
+    z: number;
+    spatialReference?: { wkid: number };
+  };
+  heading: number;
+  tilt: number;
+  clone: ReturnType<typeof vi.fn>;
+}
+
+interface MockSceneViewHarness {
+  camera: MockCamera;
+  constraints: { altitude: { min: number; max: number } };
+  goTo: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  zoom: number;
+}
+
+interface MockSceneViewOptions {
+  viewingMode: string;
+  camera: {
+    position: {
+      longitude: number;
+      latitude: number;
+      z: number;
+      spatialReference: { wkid: number };
+    };
+    heading: number;
+    tilt: number;
+  };
+  constraints: { altitude: { min: number; max: number } };
+  environment: {
+    starsEnabled: boolean;
+    atmosphereEnabled: boolean;
+    background: { type: string; color: number[] };
+    lighting: { type: string; directShadowsEnabled: boolean };
+  };
+}
+
 interface MockArcGisState {
-  shouldThrowMapView: boolean;
-  mapViewConstructed: ReturnType<typeof vi.fn>;
+  shouldThrowSceneView: boolean;
+  sceneViewConstructed: ReturnType<typeof vi.fn>;
+  sceneViews: MockSceneViewHarness[];
   featureLayers: MockFeatureLayerHarness[];
   editGates: Promise<void>[];
+  featureReductionClusterModuleLoaded: boolean;
 }
 
 const arcgis = vi.hoisted((): MockArcGisState => ({
-  shouldThrowMapView: false,
-  mapViewConstructed: vi.fn(),
+  shouldThrowSceneView: false,
+  sceneViewConstructed: vi.fn(),
+  sceneViews: [],
   featureLayers: [],
   editGates: [],
+  featureReductionClusterModuleLoaded: false,
 }));
 
 vi.mock("@arcgis/core/config.js", () => ({ default: {} }));
@@ -182,19 +234,20 @@ vi.mock("@arcgis/core/symbols/SimpleFillSymbol.js", () => ({
   },
 }));
 vi.mock("@arcgis/core/layers/support/FeatureReductionCluster.js", () => ({
-  default: class {
-    constructor(options: Record<string, unknown>) {
-      Object.assign(this, options);
-    }
-  },
+  default: (() => {
+    arcgis.featureReductionClusterModuleLoaded = true;
+    return class {};
+  })(),
 }));
 vi.mock("@arcgis/core/core/reactiveUtils.js", () => ({
   watch: vi.fn(() => ({ remove: vi.fn() })),
   whenOnce: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("@arcgis/core/views/MapView.js", () => ({
+vi.mock("@arcgis/core/views/SceneView.js", () => ({
   default: class {
     zoom = 2.2;
+    constraints = { altitude: { min: 75_000, max: 30_000_000 } };
+    camera!: MockCamera;
     ready = true;
     fatalError = null;
     when = vi.fn(async () => this);
@@ -203,12 +256,23 @@ vi.mock("@arcgis/core/views/MapView.js", () => ({
     goTo = vi.fn(async () => undefined);
     hitTest = vi.fn(async () => ({ results: [] }));
     tryFatalErrorRecovery = vi.fn();
+    resize = vi.fn();
 
     constructor(options: Record<string, unknown>) {
-      arcgis.mapViewConstructed(options);
-      if (arcgis.shouldThrowMapView)
-        throw new Error("WebGL failed while constructing MapView");
+      arcgis.sceneViewConstructed(options);
+      if (arcgis.shouldThrowSceneView)
+        throw new Error("WebGL failed while constructing SceneView");
       Object.assign(this, options);
+      const camera = options.camera as Omit<MockCamera, "clone">;
+      this.camera = {
+        ...camera,
+        position: { ...camera.position },
+        clone: vi.fn(() => ({
+          ...camera,
+          position: { ...camera.position },
+        })),
+      };
+      arcgis.sceneViews.push(this);
     }
   },
 }));
@@ -249,6 +313,7 @@ const originalGetContext = Object.getOwnPropertyDescriptor(
   "getContext",
 );
 let getContextMock: ReturnType<typeof vi.fn>;
+let resizeObserverCallbacks: ResizeObserverCallback[];
 
 const makeIndicator = (id: string): Indicator => ({
   ...indicator,
@@ -266,10 +331,25 @@ const deferred = () => {
 
 describe("ThreatMap", () => {
   beforeEach(() => {
-    arcgis.shouldThrowMapView = false;
-    arcgis.mapViewConstructed.mockClear();
+    arcgis.shouldThrowSceneView = false;
+    arcgis.sceneViewConstructed.mockClear();
+    arcgis.sceneViews.splice(0);
     arcgis.featureLayers.splice(0);
     arcgis.editGates.splice(0);
+    arcgis.featureReductionClusterModuleLoaded = false;
+    resizeObserverCallbacks = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeObserverCallbacks.push(callback);
+        }
+
+        observe = vi.fn();
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+      },
+    );
     getContextMock = vi.fn((contextId: string) =>
       contextId === "webgl2"
         ? {
@@ -287,6 +367,7 @@ describe("ThreatMap", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     if (originalGetContext) {
       Object.defineProperty(
         HTMLCanvasElement.prototype,
@@ -296,8 +377,106 @@ describe("ThreatMap", () => {
     }
   });
 
-  it("replaces a failed MapView constructor with a real ArcGIS raster map", async () => {
-    arcgis.shouldThrowMapView = true;
+  it("renders the WebGL map as a constrained global scene", async () => {
+    const { container } = render(
+      <ThreatMap
+        indicators={[indicator]}
+        filters={filters}
+        mode="clusters"
+        onModeChange={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(arcgis.sceneViews).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Zoom out" })).toBeEnabled(),
+    );
+    const view = arcgis.sceneViews[0];
+    if (!view) throw new Error("Expected a WebGL global scene view");
+    const options = arcgis.sceneViewConstructed.mock.calls[0]?.[0] as
+      MockSceneViewOptions | undefined;
+    if (!options) throw new Error("SceneView was not constructed");
+
+    expect(options).toMatchObject({
+      viewingMode: "global",
+      camera: {
+        position: {
+          longitude: 18,
+          latitude: 22,
+          z: 18_000_000,
+          spatialReference: { wkid: 4326 },
+        },
+        heading: 0,
+        tilt: 0,
+      },
+      constraints: {
+        altitude: {
+          min: 75_000,
+          max: 19_500_000,
+        },
+      },
+      environment: {
+        starsEnabled: true,
+        atmosphereEnabled: true,
+        background: {
+          type: "color",
+          color: [2, 7, 18, 1],
+        },
+        lighting: { type: "virtual", directShadowsEnabled: false },
+      },
+    });
+    expect(arcgis.featureReductionClusterModuleLoaded).toBe(false);
+    await waitFor(() =>
+      expect(arcgis.featureLayers[0]?.featureReduction).toBeNull(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Observations" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    act(() => {
+      resizeObserverCallbacks[0]?.([], {} as ResizeObserver);
+    });
+    expect(view.resize).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(view.goTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        position: expect.objectContaining({ z: 10_440_000 }),
+      }),
+      { duration: 320 },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(view.goTo).toHaveBeenCalledTimes(2);
+    expect(view.goTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        position: expect.objectContaining({ z: 19_500_000 }),
+      }),
+      { duration: 320 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset map extent" }));
+    expect(view.goTo).toHaveBeenCalledTimes(3);
+    const resetTarget = view.goTo.mock.calls.at(-1)?.[0] as
+      MockCamera | undefined;
+    expect(resetTarget).toMatchObject({
+      position: { longitude: 18, latitude: 22, z: 18_000_000 },
+      heading: 0,
+      tilt: 0,
+    });
+    expect(view.goTo).toHaveBeenLastCalledWith(resetTarget, { duration: 520 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand map" }));
+    expect(container.querySelector(".threat-map")).toHaveClass(
+      "threat-map--fullscreen",
+    );
+    expect(
+      screen.getByRole("button", { name: "Exit fullscreen map" }),
+    ).toBeInTheDocument();
+  });
+
+  it("replaces a failed SceneView constructor with a real ArcGIS raster map", async () => {
+    arcgis.shouldThrowSceneView = true;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { container } = render(
       <ThreatMap
@@ -319,7 +498,7 @@ describe("ThreatMap", () => {
     expect(getContextMock).toHaveBeenCalledWith("webgl2", {
       failIfMajorPerformanceCaveat: true,
     });
-    expect(arcgis.mapViewConstructed).toHaveBeenCalledOnce();
+    expect(arcgis.sceneViewConstructed).toHaveBeenCalledOnce();
     expect(container).not.toHaveTextContent("Simplified coordinate view");
     expect(container).not.toHaveTextContent(
       "ArcGIS WebGL renderer unavailable",
@@ -346,9 +525,7 @@ describe("ThreatMap", () => {
     await waitFor(() => expect(arcgis.featureLayers).toHaveLength(1));
     const layer = arcgis.featureLayers[0];
     if (!layer) throw new Error("FeatureLayer mock was not constructed");
-    await waitFor(() =>
-      expect(layer.featureReduction?.clusterRadius).toBe("54px"),
-    );
+    await waitFor(() => expect(layer.featureReduction).toBeNull());
 
     arcgis.editGates.push(firstUpdateGate.promise);
     rerender(<ThreatMap indicators={second} {...props} />);
