@@ -98,7 +98,7 @@ volume; `docker compose down -v` intentionally removes it.
 | Service | Needed for | Account |
 |---|---|---|
 | abuse.ch Auth-Key | URLhaus and ThreatFox collection | Free, required for current APIs |
-| ArcGIS Location Platform | Optional future premium location services | Browser key optional; the public ArcGIS World Imagery globe works without one |
+| ArcGIS Location Platform | Optional future premium location services | Browser key optional; the public ArcGIS World Imagery map works without one |
 | Google AI Studio | Gemini report/assistant prose | Free-tier backend key, optional |
 | Ollama | Local report/assistant prose | No account, optional local install |
 | Feodo Tracker | Feodo collection | None |
@@ -225,9 +225,9 @@ trusted development network.
   in the brief; NVD is deferred because the primary feeds do not provide a
   reliable IOC-to-CVE relationship and keyword inference would be misleading.
 - A country choropleth is deferred until a reviewed country-polygon dataset is
-  introduced. Point counts are not mislabeled as polygon analysis. The primary
-  ArcGIS global scene provides observations, density heatmaps, and uncertainty
-  radii; the non-WebGL raster fallback aggregates overlapping markers.
+  introduced. Point counts are not mislabeled as polygon analysis. The bounded
+  ArcGIS flat view provides clusters, density heatmaps, and uncertainty radii;
+  the non-WebGL raster fallback aggregates overlapping markers.
 - Time filtering uses a transparent observation-window control instead of the
   TimeSlider widget deprecated in ArcGIS Maps SDK 5.x.
 - ThreatMesh exports detection/report artifacts but never commits them or

@@ -4,9 +4,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { createRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Indicator } from "../types";
 import {
   ARCGIS_BASE_TILE_SERVICE,
@@ -44,8 +45,60 @@ const tileSources = (container: HTMLElement) =>
     (image) => image.src,
   );
 
+const tileCoverage = (container: HTMLElement) => {
+  const tiles = Array.from(
+    container.querySelectorAll<HTMLElement>(".arcgis-raster-map__tile"),
+  );
+  const left = tiles.map((tile) => Number.parseFloat(tile.style.left));
+  const top = tiles.map((tile) => Number.parseFloat(tile.style.top));
+  return {
+    left: Math.min(...left),
+    right: Math.max(...left) + 256,
+    top: Math.min(...top),
+    bottom: Math.max(...top) + 256,
+  };
+};
+
+let viewportWidth: number;
+let viewportHeight: number;
+let resizeObserverCallbacks: ResizeObserverCallback[];
+
 describe("ArcGisRasterMap", () => {
-  afterEach(cleanup);
+  beforeEach(() => {
+    viewportWidth = 1000;
+    viewportHeight = 500;
+    resizeObserverCallbacks = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeObserverCallbacks.push(callback);
+        }
+
+        observe = vi.fn();
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains("arcgis-raster-map") ? viewportWidth : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains("arcgis-raster-map")
+          ? viewportHeight
+          : 0;
+      },
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("renders genuine ArcGIS base and reference tiles without fetching them", () => {
     const { container } = render(
@@ -141,5 +194,77 @@ describe("ArcGisRasterMap", () => {
     expect(
       tileSources(container).every((source) => source.includes("/tile/2/")),
     ).toBe(true);
+  });
+
+  it("raises and enforces the raster zoom floor for a wide fullscreen viewport", async () => {
+    viewportWidth = 2635;
+    viewportHeight = 1484;
+    const ref = createRef<ArcGisRasterMapHandle>();
+    const { container } = render(
+      <ArcGisRasterMap
+        ref={ref}
+        indicators={[indicator]}
+        mode="clusters"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        tileSources(container).every((source) => source.includes("/tile/4/")),
+      ).toBe(true),
+    );
+    expect(tileCoverage(container)).toMatchObject({
+      left: expect.any(Number),
+      right: expect.any(Number),
+      top: expect.any(Number),
+      bottom: expect.any(Number),
+    });
+    const coverage = tileCoverage(container);
+    expect(coverage.left).toBeLessThanOrEqual(0);
+    expect(coverage.right).toBeGreaterThanOrEqual(viewportWidth);
+    expect(coverage.top).toBeLessThanOrEqual(0);
+    expect(coverage.bottom).toBeGreaterThanOrEqual(viewportHeight);
+
+    act(() => ref.current?.adjustZoom(-1));
+    expect(
+      tileSources(container).every((source) => source.includes("/tile/4/")),
+    ).toBe(true);
+    act(() => ref.current?.recenter());
+    expect(
+      tileSources(container).every((source) => source.includes("/tile/4/")),
+    ).toBe(true);
+  });
+
+  it("clamps the projected center so a portrait viewport exposes no polar gap", async () => {
+    viewportWidth = 390;
+    viewportHeight = 844;
+    const { container } = render(
+      <ArcGisRasterMap
+        indicators={[indicator]}
+        mode="clusters"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const coverage = tileCoverage(container);
+      expect(coverage.top).toBeLessThanOrEqual(0);
+      expect(coverage.bottom).toBeGreaterThanOrEqual(viewportHeight);
+    });
+    expect(
+      tileSources(container).every((source) => source.includes("/tile/2/")),
+    ).toBe(true);
+
+    viewportWidth = 2635;
+    viewportHeight = 1484;
+    act(() => {
+      resizeObserverCallbacks[0]?.([], {} as ResizeObserver);
+    });
+    await waitFor(() =>
+      expect(
+        tileSources(container).every((source) => source.includes("/tile/4/")),
+      ).toBe(true),
+    );
   });
 });

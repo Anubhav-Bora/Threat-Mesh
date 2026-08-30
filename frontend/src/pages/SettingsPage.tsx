@@ -166,10 +166,10 @@ export default function SettingsPage() {
           </div>
           <p>
             ThreatMesh works without a key by using public ArcGIS World Imagery
-            with the ArcGIS Boundaries and Places reference layer. The 3D globe
-            intentionally uses these public services in both configurations; add
-            a restricted key only for premium ArcGIS services you introduce
-            later.
+            with the ArcGIS Boundaries and Places reference layer. The bounded
+            flat map intentionally uses these public services in both
+            configurations; add a restricted key only for premium ArcGIS
+            services you introduce later.
           </p>
           {!hasArcGisKey && (
             <ol className="setup-steps">

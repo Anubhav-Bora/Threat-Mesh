@@ -1,11 +1,11 @@
 import {
-  Globe2,
   Layers3,
   LocateFixed,
   Maximize2,
   Minimize2,
   Minus,
   Plus,
+  Satellite,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Indicator, MapFilters } from "../types";
@@ -22,6 +22,13 @@ import {
   threatFamilyColor,
   threatFamilyColorIndex,
 } from "./mapVisuals";
+import {
+  constrainFlatMapCenter,
+  flatMapSafeExtent,
+  MAX_FLAT_MAP_ZOOM,
+  minimumFlatMapZoom,
+  WEB_MERCATOR_HALF_WORLD,
+} from "./mapViewport";
 
 export type MapMode = "clusters" | "heatmap" | "uncertainty";
 
@@ -47,10 +54,8 @@ const hasWebGl2 = () => {
   }
 };
 
-const MIN_GLOBE_ALTITUDE = 75_000;
-const RESET_GLOBE_ALTITUDE = 18_000_000;
-const MAX_GLOBE_ALTITUDE = 19_500_000;
-const GLOBE_CENTER = { longitude: 18, latitude: 22 };
+const DEFAULT_MAP_CENTER: [number, number] = [18, 22];
+const DEFAULT_MAP_ZOOM = 2;
 
 export function ThreatMap({
   indicators,
@@ -71,11 +76,13 @@ export function ThreatMap({
     ((objectIds: Array<number | string>) => any[]) | null
   >(null);
   const createPointRendererRef = useRef<(() => any) | null>(null);
+  const createClusterReductionRef = useRef<(() => any) | null>(null);
   const createPrecisionGraphicsRef = useRef<
     ((items: Indicator[]) => any[]) | null
   >(null);
   const onSelectRef = useRef(onSelect);
   const indicatorsRef = useRef(indicators);
+  const webGlMinimumZoomRef = useRef(1);
   const lastQueuedIndicatorsRef = useRef<Indicator[] | null>(null);
   const activeObjectIdsRef = useRef<Array<number | string>>([]);
   const editQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -124,6 +131,7 @@ export function ThreatMap({
     let cancelled = false;
     let view: any;
     let fatalErrorHandle: { remove: () => void } | undefined;
+    let navigationConstraintHandle: { remove: () => void } | undefined;
     let recoveryController: AbortController | undefined;
     let viewportObserver: ResizeObserver | undefined;
     let removeWindowResizeListener: (() => void) | undefined;
@@ -139,32 +147,36 @@ export function ThreatMap({
         const [
           { default: config },
           { default: ArcGISMap },
-          { default: SceneView },
+          { default: MapView },
           { default: Basemap },
           { default: TileLayer },
           { default: FeatureLayer },
           { default: GraphicsLayer },
           { default: Graphic },
           { default: Point },
+          { default: Extent },
           { default: Circle },
           { default: UniqueValueRenderer },
           { default: SimpleMarkerSymbol },
           { default: SimpleFillSymbol },
+          { default: FeatureReductionCluster },
           reactiveUtils,
         ] = await Promise.all([
           import("@arcgis/core/config.js"),
           import("@arcgis/core/Map.js"),
-          import("@arcgis/core/views/SceneView.js"),
+          import("@arcgis/core/views/MapView.js"),
           import("@arcgis/core/Basemap.js"),
           import("@arcgis/core/layers/TileLayer.js"),
           import("@arcgis/core/layers/FeatureLayer.js"),
           import("@arcgis/core/layers/GraphicsLayer.js"),
           import("@arcgis/core/Graphic.js"),
           import("@arcgis/core/geometry/Point.js"),
+          import("@arcgis/core/geometry/Extent.js"),
           import("@arcgis/core/geometry/Circle.js"),
           import("@arcgis/core/renderers/UniqueValueRenderer.js"),
           import("@arcgis/core/symbols/SimpleMarkerSymbol.js"),
           import("@arcgis/core/symbols/SimpleFillSymbol.js"),
+          import("@arcgis/core/layers/support/FeatureReductionCluster.js"),
           import("@arcgis/core/core/reactiveUtils.js"),
         ]);
         if (cancelled || !containerRef.current) return;
@@ -305,6 +317,38 @@ export function ThreatMap({
             ],
           });
         createPointRendererRef.current = createPointRenderer;
+        const createClusterReduction = () =>
+          new FeatureReductionCluster({
+            clusterRadius: "54px",
+            clusterMinSize: "24px",
+            clusterMaxSize: "42px",
+            symbol: new SimpleMarkerSymbol({
+              color: [10, 18, 34, 0.9],
+              outline: { color: [167, 139, 250, 0.95], width: 2 },
+            }),
+            popupTemplate: {
+              title: "Threat infrastructure cluster",
+              content:
+                "This area contains <b>{cluster_count}</b> IOC observations.",
+            },
+            labelingInfo: [
+              {
+                deconflictionStrategy: "none",
+                labelExpressionInfo: {
+                  expression: "Text($feature.cluster_count, '#,###')",
+                },
+                symbol: {
+                  type: "text",
+                  color: "#f8fafc",
+                  font: { family: "Inter", size: 10, weight: "bold" },
+                  haloColor: "#080d18",
+                  haloSize: 1.5,
+                },
+                labelPlacement: "center-center",
+              },
+            ],
+          });
+        createClusterReductionRef.current = createClusterReduction;
 
         const pointRenderer = createPointRenderer();
 
@@ -331,7 +375,6 @@ export function ThreatMap({
           ],
           geometryType: "point",
           spatialReference: { wkid: 4326 },
-          elevationInfo: { mode: "on-the-ground" },
           renderer: pointRenderer,
           timeInfo: { startField: "last_seen" },
           popupTemplate: {
@@ -354,48 +397,103 @@ export function ThreatMap({
           title: "Illustrative geolocation context",
           visible: false,
           listMode: "hide",
-          elevationInfo: { mode: "on-the-ground" },
           graphics: createPrecisionGraphics(indicatorsRef.current),
         });
         map.addMany([precisionLayer, layer]);
 
         const viewContainer = containerRef.current;
-        view = new SceneView({
+        const initialMinimumZoom = minimumFlatMapZoom(
+          viewContainer.clientWidth,
+          viewContainer.clientHeight,
+        );
+        webGlMinimumZoomRef.current = initialMinimumZoom;
+        view = new MapView({
           container: viewContainer,
           map,
-          viewingMode: "global",
-          camera: {
-            position: {
-              ...GLOBE_CENTER,
-              z: RESET_GLOBE_ALTITUDE,
-              spatialReference: { wkid: 4326 },
-            },
-            heading: 0,
-            tilt: 0,
-          },
+          spatialReference: { wkid: 3857 },
+          center: DEFAULT_MAP_CENTER,
+          zoom: Math.max(DEFAULT_MAP_ZOOM, initialMinimumZoom),
           constraints: {
-            altitude: {
-              min: MIN_GLOBE_ALTITUDE,
-              max: MAX_GLOBE_ALTITUDE,
+            geometry: {
+              type: "extent",
+              xmin: -WEB_MERCATOR_HALF_WORLD,
+              ymin: -WEB_MERCATOR_HALF_WORLD,
+              xmax: WEB_MERCATOR_HALF_WORLD,
+              ymax: WEB_MERCATOR_HALF_WORLD,
+              spatialReference: { wkid: 3857 },
             },
-          },
-          environment: {
-            background: { type: "color", color: [2, 7, 18, 1] },
-            atmosphereEnabled: true,
-            starsEnabled: true,
-            lighting: {
-              type: "virtual",
-              directShadowsEnabled: false,
-            },
+            minZoom: initialMinimumZoom,
+            maxZoom: MAX_FLAT_MAP_ZOOM,
+            rotationEnabled: false,
+            snapToZoom: true,
           },
           attributionVisible: true,
           ui: { components: [] },
           popup: { dockEnabled: false },
+          background: { color: [3, 8, 18, 1] },
         });
+
+        let constrainingCenter = false;
+        const updateNavigationConstraint = () => {
+          if (
+            cancelled ||
+            !Number.isFinite(view?.resolution) ||
+            view.resolution <= 0
+          )
+            return;
+          view.constraints.geometry = new Extent({
+            ...flatMapSafeExtent({
+              resolution: view.resolution,
+              width: view.width || viewContainer.clientWidth,
+              height: view.height || viewContainer.clientHeight,
+            }),
+            spatialReference: { wkid: 3857 },
+          });
+        };
+        const enforceMapCoverage = () => {
+          if (
+            cancelled ||
+            constrainingCenter ||
+            !view?.center ||
+            !Number.isFinite(view.center.x) ||
+            !Number.isFinite(view.center.y) ||
+            !Number.isFinite(view.resolution) ||
+            view.resolution <= 0
+          )
+            return;
+          const constrained = constrainFlatMapCenter({
+            x: view.center.x,
+            y: view.center.y,
+            resolution: view.resolution,
+            width: view.width || viewContainer.clientWidth,
+            height: view.height || viewContainer.clientHeight,
+          });
+          if (
+            Math.abs(constrained.x - view.center.x) < 0.5 &&
+            Math.abs(constrained.y - view.center.y) < 0.5
+          )
+            return;
+          constrainingCenter = true;
+          view.center = new Point({
+            ...constrained,
+            spatialReference: { wkid: 3857 },
+          });
+          constrainingCenter = false;
+        };
 
         const synchronizeViewport = () => {
           if (cancelled || !view || !containerRef.current) return;
           if (typeof view.resize === "function") view.resize();
+          const minimumZoom = minimumFlatMapZoom(
+            containerRef.current.clientWidth,
+            containerRef.current.clientHeight,
+          );
+          webGlMinimumZoomRef.current = minimumZoom;
+          view.constraints.minZoom = minimumZoom;
+          if (!Number.isFinite(view.zoom) || view.zoom < minimumZoom)
+            view.zoom = minimumZoom;
+          updateNavigationConstraint();
+          enforceMapCoverage();
         };
         synchronizeViewport();
         if (typeof ResizeObserver !== "undefined") {
@@ -406,6 +504,13 @@ export function ThreatMap({
           removeWindowResizeListener = () =>
             window.removeEventListener("resize", synchronizeViewport);
         }
+        navigationConstraintHandle = reactiveUtils.watch(
+          () => [view.resolution, view.width, view.height],
+          () => {
+            updateNavigationConstraint();
+            enforceMapCoverage();
+          },
+        );
 
         fatalErrorHandle = reactiveUtils.watch(
           () => view.fatalError,
@@ -459,14 +564,15 @@ export function ThreatMap({
           const selected = indicatorsRef.current.find((item) => item.id === id);
           if (selected) onSelectRef.current(selected);
         });
-        layer.featureReduction = null;
+        layer.featureReduction = createClusterReduction();
       } catch (error) {
-        console.error("ArcGIS globe initialization failed", error);
+        console.error("ArcGIS map initialization failed", error);
         viewportObserver?.disconnect();
         viewportObserver = undefined;
         removeWindowResizeListener?.();
         removeWindowResizeListener = undefined;
         fatalErrorHandle?.remove();
+        navigationConstraintHandle?.remove();
         recoveryController?.abort();
         if (view) {
           view.destroy();
@@ -488,6 +594,7 @@ export function ThreatMap({
       editVersionRef.current += 1;
       recoveryController?.abort();
       fatalErrorHandle?.remove();
+      navigationConstraintHandle?.remove();
       viewportObserver?.disconnect();
       removeWindowResizeListener?.();
       if (view) view.destroy();
@@ -497,6 +604,7 @@ export function ThreatMap({
       createGraphicsRef.current = null;
       createDeleteGraphicsRef.current = null;
       createPointRendererRef.current = null;
+      createClusterReductionRef.current = null;
       createPrecisionGraphicsRef.current = null;
       lastQueuedIndicatorsRef.current = null;
       activeObjectIdsRef.current = [];
@@ -585,7 +693,15 @@ export function ThreatMap({
     const precisionLayer = precisionLayerRef.current;
     const view = viewRef.current;
     const createPointRenderer = createPointRendererRef.current;
-    if (!layer || !precisionLayer || !view || !createPointRenderer) return;
+    const createClusterReduction = createClusterReductionRef.current;
+    if (
+      !layer ||
+      !precisionLayer ||
+      !view ||
+      !createPointRenderer ||
+      !createClusterReduction
+    )
+      return;
     let cancelled = false;
     const setMode = async () => {
       const { default: HeatmapRenderer } =
@@ -610,7 +726,8 @@ export function ThreatMap({
         });
       } else {
         layer.renderer = createPointRenderer();
-        layer.featureReduction = null;
+        layer.featureReduction =
+          mode === "clusters" ? createClusterReduction() : null;
       }
     };
     void setMode();
@@ -644,18 +761,15 @@ export function ThreatMap({
       return;
     }
     const view = viewRef.current;
-    const camera = view?.camera?.clone?.();
-    if (!view || !camera?.position) return;
-    const currentAltitude = Number(camera.position.z);
-    const nextAltitude =
-      (Number.isFinite(currentAltitude)
-        ? currentAltitude
-        : RESET_GLOBE_ALTITUDE) * (delta > 0 ? 0.58 : 1.72);
-    camera.position.z = Math.min(
-      MAX_GLOBE_ALTITUDE,
-      Math.max(MIN_GLOBE_ALTITUDE, nextAltitude),
+    if (!view) return;
+    const currentZoom = Number.isFinite(view.zoom)
+      ? view.zoom
+      : webGlMinimumZoomRef.current;
+    const zoom = Math.min(
+      MAX_FLAT_MAP_ZOOM,
+      Math.max(webGlMinimumZoomRef.current, currentZoom + delta),
     );
-    view.goTo(camera, { duration: 320 }).catch(() => undefined);
+    view.goTo({ zoom }, { duration: 220 }).catch(() => undefined);
   };
 
   const recenter = () => {
@@ -664,14 +778,16 @@ export function ThreatMap({
       return;
     }
     const view = viewRef.current;
-    const camera = view?.camera?.clone?.();
-    if (!view || !camera?.position) return;
-    camera.position.longitude = GLOBE_CENTER.longitude;
-    camera.position.latitude = GLOBE_CENTER.latitude;
-    camera.position.z = RESET_GLOBE_ALTITUDE;
-    camera.heading = 0;
-    camera.tilt = 0;
-    view.goTo(camera, { duration: 520 }).catch(() => undefined);
+    if (!view) return;
+    view
+      .goTo(
+        {
+          center: DEFAULT_MAP_CENTER,
+          zoom: Math.max(DEFAULT_MAP_ZOOM, webGlMinimumZoomRef.current),
+        },
+        { duration: 420 },
+      )
+      .catch(() => undefined);
   };
 
   useEffect(() => {
@@ -700,7 +816,7 @@ export function ThreatMap({
       <div
         ref={containerRef}
         className="threat-map__canvas"
-        aria-label="Interactive 3D globe of approximate threat infrastructure locations"
+        aria-label="Interactive flat map of approximate threat infrastructure locations"
         aria-hidden={mapState === "fallback"}
         inert={mapState === "fallback"}
       />
@@ -711,7 +827,7 @@ export function ThreatMap({
             <span />
             <span />
           </span>
-          <span>Initializing ArcGIS globe</span>
+          <span>Initializing ArcGIS map</span>
         </div>
       )}
       {mapState === "fallback" && (
@@ -735,17 +851,13 @@ export function ThreatMap({
             className={mode === value ? "is-active" : ""}
             aria-pressed={mode === value}
           >
-            {value === "clusters"
-              ? "Observations"
-              : value === "uncertainty"
-                ? "Location context"
-                : value}
+            {value === "uncertainty" ? "Location context" : value}
           </button>
         ))}
       </div>
       <div className="map-basemap-badge">
-        <Globe2 size={12} />
-        <span>ArcGIS World Imagery · 3D globe</span>
+        <Satellite size={12} />
+        <span>ArcGIS World Imagery · bounded flat view</span>
         <i aria-hidden="true" />
       </div>
       <div className="map-controls">

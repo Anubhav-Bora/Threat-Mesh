@@ -50,11 +50,11 @@ method. Monitor the active transaction allowances in the portal; they can
 change. See Esri's [API-key tutorial](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/tutorials/create-an-api-key/online/)
 and [current pricing](https://location.arcgis.com/pricing/).
 
-ThreatMesh's global 3D scene uses public ArcGIS World Imagery plus the ArcGIS
+ThreatMesh's bounded flat map uses public ArcGIS World Imagery plus the ArcGIS
 Boundaries and Places reference service, so no key is required. Browsers without
 WebGL2 use the same ArcGIS tiles through an interactive raster renderer. A key
 is reserved for premium ArcGIS services you may add later; it does not unlock
-observations, heatmaps, or location-context features in the current release.
+clusters, heatmaps, or location-context features in the current release.
 
 ## 3. Google Gemini key (optional report and assistant prose)
 

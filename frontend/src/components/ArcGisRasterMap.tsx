@@ -13,6 +13,7 @@ import type {
 } from "react";
 import type { Indicator } from "../types";
 import { threatFamilyColor } from "./mapVisuals";
+import { minimumRasterMapZoom } from "./mapViewport";
 import type { MapMode } from "./ThreatMap";
 
 const TILE_SIZE = 256;
@@ -106,13 +107,8 @@ export const ArcGisRasterMap = forwardRef<
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [zoom, setZoom] = useState(2);
   const [dragging, setDragging] = useState(false);
-  const minimumZoom = clamp(
-    Math.ceil(
-      Math.log2(Math.max(size.width, size.height, TILE_SIZE) / TILE_SIZE),
-    ),
-    MIN_ZOOM,
-    MAX_ZOOM,
-  );
+  const minimumZoom = minimumRasterMapZoom(size.width, size.height);
+  const renderedZoom = Math.max(zoom, minimumZoom);
   minimumZoomRef.current = minimumZoom;
 
   useEffect(() => {
@@ -173,17 +169,22 @@ export const ArcGisRasterMap = forwardRef<
   useImperativeHandle(ref, () => ({ adjustZoom, recenter }));
 
   const projection = useMemo(() => {
-    const worldSize = worldSizeAt(zoom);
+    const worldSize = worldSizeAt(renderedZoom);
+    const halfViewportHeight = Math.min(size.height / 2, worldSize / 2);
     return {
       worldSize,
       centerX: longitudeToWorldX(center.longitude, worldSize),
-      centerY: latitudeToWorldY(center.latitude, worldSize),
+      centerY: clamp(
+        latitudeToWorldY(center.latitude, worldSize),
+        halfViewportHeight,
+        worldSize - halfViewportHeight,
+      ),
     };
-  }, [center, zoom]);
+  }, [center, renderedZoom, size.height]);
 
   const tiles = useMemo(() => {
     const { centerX, centerY } = projection;
-    const tileCount = 2 ** zoom;
+    const tileCount = 2 ** renderedZoom;
     const left = centerX - size.width / 2;
     const top = centerY - size.height / 2;
     const firstColumn = Math.floor(left / TILE_SIZE) - 1;
@@ -199,16 +200,16 @@ export const ArcGisRasterMap = forwardRef<
       for (let column = firstColumn; column <= lastColumn; column += 1) {
         const wrappedColumn = wrap(column, tileCount);
         visible.push({
-          key: `${zoom}-${column}-${row}`,
+          key: `${renderedZoom}-${column}-${row}`,
           left: column * TILE_SIZE - left,
           top: row * TILE_SIZE - top,
-          baseUrl: `${ARCGIS_BASE_TILE_SERVICE}/tile/${zoom}/${row}/${wrappedColumn}`,
-          referenceUrl: `${ARCGIS_REFERENCE_TILE_SERVICE}/tile/${zoom}/${row}/${wrappedColumn}`,
+          baseUrl: `${ARCGIS_BASE_TILE_SERVICE}/tile/${renderedZoom}/${row}/${wrappedColumn}`,
+          referenceUrl: `${ARCGIS_REFERENCE_TILE_SERVICE}/tile/${renderedZoom}/${row}/${wrappedColumn}`,
         });
       }
     }
     return visible;
-  }, [projection, size, zoom]);
+  }, [projection, renderedZoom, size]);
 
   const markers = useMemo(() => {
     const { centerX, centerY, worldSize } = projection;
@@ -231,7 +232,7 @@ export const ArcGisRasterMap = forwardRef<
           centerY;
         const metersPerPixel =
           (156543.03392 * Math.cos((item.latitude * Math.PI) / 180)) /
-          2 ** zoom;
+          2 ** renderedZoom;
         const precisionRadius =
           item.locationPrecisionKm && item.locationPrecisionKm > 0
             ? clamp(
@@ -249,7 +250,7 @@ export const ArcGisRasterMap = forwardRef<
           top >= -130 &&
           top <= size.height + 130,
       );
-  }, [indicators, projection, size, zoom]);
+  }, [indicators, projection, renderedZoom, size]);
 
   const displayMarkers = useMemo<DisplayMarker[]>(() => {
     if (mode !== "clusters") {
@@ -422,7 +423,7 @@ export const ArcGisRasterMap = forwardRef<
                 }
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => {
-                  if (!isCluster || zoom === MAX_ZOOM) {
+                  if (!isCluster || renderedZoom === MAX_ZOOM) {
                     onSelect(item);
                     return;
                   }

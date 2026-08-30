@@ -30,60 +30,52 @@ interface MockFeatureLayerHarness {
   featureReduction?: { clusterRadius?: string } | null;
 }
 
-interface MockCamera {
-  position: {
-    longitude: number;
-    latitude: number;
-    z: number;
-    spatialReference?: { wkid: number };
+interface MockMapViewHarness {
+  constraints: {
+    minZoom: number;
+    maxZoom: number;
+    rotationEnabled: boolean;
+    snapToZoom: boolean;
   };
-  heading: number;
-  tilt: number;
-  clone: ReturnType<typeof vi.fn>;
-}
-
-interface MockSceneViewHarness {
-  camera: MockCamera;
-  constraints: { altitude: { min: number; max: number } };
   goTo: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   zoom: number;
 }
 
-interface MockSceneViewOptions {
-  viewingMode: string;
-  camera: {
-    position: {
-      longitude: number;
-      latitude: number;
-      z: number;
+interface MockMapViewOptions {
+  spatialReference: { wkid: number };
+  center: [number, number];
+  zoom: number;
+  constraints: {
+    geometry: {
+      type: string;
+      xmin: number;
+      ymin: number;
+      xmax: number;
+      ymax: number;
       spatialReference: { wkid: number };
     };
-    heading: number;
-    tilt: number;
+    minZoom: number;
+    maxZoom: number;
+    rotationEnabled: boolean;
+    snapToZoom: boolean;
   };
-  constraints: { altitude: { min: number; max: number } };
-  environment: {
-    starsEnabled: boolean;
-    atmosphereEnabled: boolean;
-    background: { type: string; color: number[] };
-    lighting: { type: string; directShadowsEnabled: boolean };
-  };
+  background: { color: number[] };
 }
 
 interface MockArcGisState {
-  shouldThrowSceneView: boolean;
-  sceneViewConstructed: ReturnType<typeof vi.fn>;
-  sceneViews: MockSceneViewHarness[];
+  shouldThrowMapView: boolean;
+  mapViewConstructed: ReturnType<typeof vi.fn>;
+  mapViews: MockMapViewHarness[];
   featureLayers: MockFeatureLayerHarness[];
   editGates: Promise<void>[];
   featureReductionClusterModuleLoaded: boolean;
 }
 
 const arcgis = vi.hoisted((): MockArcGisState => ({
-  shouldThrowSceneView: false,
-  sceneViewConstructed: vi.fn(),
-  sceneViews: [],
+  shouldThrowMapView: false,
+  mapViewConstructed: vi.fn(),
+  mapViews: [],
   featureLayers: [],
   editGates: [],
   featureReductionClusterModuleLoaded: false,
@@ -236,18 +228,31 @@ vi.mock("@arcgis/core/symbols/SimpleFillSymbol.js", () => ({
 vi.mock("@arcgis/core/layers/support/FeatureReductionCluster.js", () => ({
   default: (() => {
     arcgis.featureReductionClusterModuleLoaded = true;
-    return class {};
+    return class {
+      constructor(options: Record<string, unknown>) {
+        Object.assign(this, options);
+      }
+    };
   })(),
 }));
 vi.mock("@arcgis/core/core/reactiveUtils.js", () => ({
   watch: vi.fn(() => ({ remove: vi.fn() })),
   whenOnce: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("@arcgis/core/views/SceneView.js", () => ({
+vi.mock("@arcgis/core/views/MapView.js", () => ({
   default: class {
-    zoom = 2.2;
-    constraints = { altitude: { min: 75_000, max: 30_000_000 } };
-    camera!: MockCamera;
+    zoom = 2;
+    constraints = {
+      minZoom: 1,
+      maxZoom: 14,
+      rotationEnabled: false,
+      snapToZoom: true,
+    };
+    center: { x: number; y: number } = { x: 0, y: 0 };
+    resolution = 1;
+    width = 0;
+    height = 0;
+    container?: HTMLElement;
     ready = true;
     fatalError = null;
     when = vi.fn(async () => this);
@@ -256,23 +261,20 @@ vi.mock("@arcgis/core/views/SceneView.js", () => ({
     goTo = vi.fn(async () => undefined);
     hitTest = vi.fn(async () => ({ results: [] }));
     tryFatalErrorRecovery = vi.fn();
-    resize = vi.fn();
+    resize = vi.fn(() => {
+      this.width = this.container?.clientWidth ?? 0;
+      this.height = this.container?.clientHeight ?? 0;
+    });
 
     constructor(options: Record<string, unknown>) {
-      arcgis.sceneViewConstructed(options);
-      if (arcgis.shouldThrowSceneView)
-        throw new Error("WebGL failed while constructing SceneView");
+      arcgis.mapViewConstructed(options);
+      if (arcgis.shouldThrowMapView)
+        throw new Error("WebGL failed while constructing MapView");
       Object.assign(this, options);
-      const camera = options.camera as Omit<MockCamera, "clone">;
-      this.camera = {
-        ...camera,
-        position: { ...camera.position },
-        clone: vi.fn(() => ({
-          ...camera,
-          position: { ...camera.position },
-        })),
-      };
-      arcgis.sceneViews.push(this);
+      this.center = { x: 0, y: 0 };
+      this.width = this.container?.clientWidth ?? 0;
+      this.height = this.container?.clientHeight ?? 0;
+      arcgis.mapViews.push(this);
     }
   },
 }));
@@ -314,6 +316,8 @@ const originalGetContext = Object.getOwnPropertyDescriptor(
 );
 let getContextMock: ReturnType<typeof vi.fn>;
 let resizeObserverCallbacks: ResizeObserverCallback[];
+let viewportWidth: number;
+let viewportHeight: number;
 
 const makeIndicator = (id: string): Indicator => ({
   ...indicator,
@@ -331,12 +335,14 @@ const deferred = () => {
 
 describe("ThreatMap", () => {
   beforeEach(() => {
-    arcgis.shouldThrowSceneView = false;
-    arcgis.sceneViewConstructed.mockClear();
-    arcgis.sceneViews.splice(0);
+    arcgis.shouldThrowMapView = false;
+    arcgis.mapViewConstructed.mockClear();
+    arcgis.mapViews.splice(0);
     arcgis.featureLayers.splice(0);
     arcgis.editGates.splice(0);
     arcgis.featureReductionClusterModuleLoaded = false;
+    viewportWidth = 1000;
+    viewportHeight = 500;
     resizeObserverCallbacks = [];
     vi.stubGlobal(
       "ResizeObserver",
@@ -348,6 +354,20 @@ describe("ThreatMap", () => {
         observe = vi.fn();
         disconnect = vi.fn();
         unobserve = vi.fn();
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains("threat-map__canvas")
+          ? viewportWidth
+          : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains("threat-map__canvas")
+          ? viewportHeight
+          : 0;
       },
     );
     getContextMock = vi.fn((contextId: string) =>
@@ -377,7 +397,7 @@ describe("ThreatMap", () => {
     }
   });
 
-  it("renders the WebGL map as a constrained global scene", async () => {
+  it("renders a bounded flat MapView with clustering and a viewport-sized zoom floor", async () => {
     const { container } = render(
       <ThreatMap
         indicators={[indicator]}
@@ -388,83 +408,67 @@ describe("ThreatMap", () => {
       />,
     );
 
-    await waitFor(() => expect(arcgis.sceneViews).toHaveLength(1));
+    await waitFor(() => expect(arcgis.mapViews).toHaveLength(1));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Zoom out" })).toBeEnabled(),
     );
-    const view = arcgis.sceneViews[0];
-    if (!view) throw new Error("Expected a WebGL global scene view");
-    const options = arcgis.sceneViewConstructed.mock.calls[0]?.[0] as
-      MockSceneViewOptions | undefined;
-    if (!options) throw new Error("SceneView was not constructed");
+    const view = arcgis.mapViews[0];
+    if (!view) throw new Error("Expected a WebGL flat map view");
+    const options = arcgis.mapViewConstructed.mock.calls[0]?.[0] as
+      MockMapViewOptions | undefined;
+    if (!options) throw new Error("MapView was not constructed");
 
     expect(options).toMatchObject({
-      viewingMode: "global",
-      camera: {
-        position: {
-          longitude: 18,
-          latitude: 22,
-          z: 18_000_000,
-          spatialReference: { wkid: 4326 },
-        },
-        heading: 0,
-        tilt: 0,
-      },
+      spatialReference: { wkid: 3857 },
+      center: [18, 22],
+      zoom: 2,
       constraints: {
-        altitude: {
-          min: 75_000,
-          max: 19_500_000,
+        geometry: {
+          type: "extent",
+          spatialReference: { wkid: 3857 },
         },
+        minZoom: 2,
+        maxZoom: 14,
+        rotationEnabled: false,
+        snapToZoom: true,
       },
-      environment: {
-        starsEnabled: true,
-        atmosphereEnabled: true,
-        background: {
-          type: "color",
-          color: [2, 7, 18, 1],
-        },
-        lighting: { type: "virtual", directShadowsEnabled: false },
-      },
+      background: { color: [3, 8, 18, 1] },
     });
-    expect(arcgis.featureReductionClusterModuleLoaded).toBe(false);
+    expect(arcgis.featureReductionClusterModuleLoaded).toBe(true);
     await waitFor(() =>
-      expect(arcgis.featureLayers[0]?.featureReduction).toBeNull(),
+      expect(arcgis.featureLayers[0]?.featureReduction?.clusterRadius).toBe(
+        "54px",
+      ),
+    );
+    expect(screen.getByRole("button", { name: /clusters/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
     expect(
-      screen.getByRole("button", { name: "Observations" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByLabelText(
+        "Interactive flat map of approximate threat infrastructure locations",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/bounded flat view/i)).toBeInTheDocument();
 
+    viewportWidth = 2635;
+    viewportHeight = 1484;
     act(() => {
       resizeObserverCallbacks[0]?.([], {} as ResizeObserver);
     });
     expect(view.resize).toHaveBeenCalled();
+    expect(view.constraints.minZoom).toBe(4);
+    expect(view.zoom).toBe(4);
 
-    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
-    expect(view.goTo).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        position: expect.objectContaining({ z: 10_440_000 }),
-      }),
-      { duration: 320 },
-    );
+    view.zoom = 4;
     fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
-    expect(view.goTo).toHaveBeenCalledTimes(2);
-    expect(view.goTo).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        position: expect.objectContaining({ z: 19_500_000 }),
-      }),
-      { duration: 320 },
-    );
+    expect(view.goTo).toHaveBeenLastCalledWith({ zoom: 4 }, { duration: 220 });
 
     fireEvent.click(screen.getByRole("button", { name: "Reset map extent" }));
-    expect(view.goTo).toHaveBeenCalledTimes(3);
-    const resetTarget = view.goTo.mock.calls.at(-1)?.[0] as
-      MockCamera | undefined;
-    expect(resetTarget).toMatchObject({
-      position: { longitude: 18, latitude: 22, z: 18_000_000 },
-      heading: 0,
-      tilt: 0,
-    });
-    expect(view.goTo).toHaveBeenLastCalledWith(resetTarget, { duration: 520 });
+    expect(view.goTo).toHaveBeenLastCalledWith(
+      { center: [18, 22], zoom: 4 },
+      { duration: 420 },
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Expand map" }));
     expect(container.querySelector(".threat-map")).toHaveClass(
@@ -475,8 +479,8 @@ describe("ThreatMap", () => {
     ).toBeInTheDocument();
   });
 
-  it("replaces a failed SceneView constructor with a real ArcGIS raster map", async () => {
-    arcgis.shouldThrowSceneView = true;
+  it("replaces a failed MapView constructor with a real ArcGIS raster map", async () => {
+    arcgis.shouldThrowMapView = true;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { container } = render(
       <ThreatMap
@@ -498,7 +502,7 @@ describe("ThreatMap", () => {
     expect(getContextMock).toHaveBeenCalledWith("webgl2", {
       failIfMajorPerformanceCaveat: true,
     });
-    expect(arcgis.sceneViewConstructed).toHaveBeenCalledOnce();
+    expect(arcgis.mapViewConstructed).toHaveBeenCalledOnce();
     expect(container).not.toHaveTextContent("Simplified coordinate view");
     expect(container).not.toHaveTextContent(
       "ArcGIS WebGL renderer unavailable",
@@ -525,7 +529,9 @@ describe("ThreatMap", () => {
     await waitFor(() => expect(arcgis.featureLayers).toHaveLength(1));
     const layer = arcgis.featureLayers[0];
     if (!layer) throw new Error("FeatureLayer mock was not constructed");
-    await waitFor(() => expect(layer.featureReduction).toBeNull());
+    await waitFor(() =>
+      expect(layer.featureReduction?.clusterRadius).toBe("54px"),
+    );
 
     arcgis.editGates.push(firstUpdateGate.promise);
     rerender(<ThreatMap indicators={second} {...props} />);

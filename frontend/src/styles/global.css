@@ -1080,12 +1080,7 @@ input[type="range"] {
   isolation: isolate;
   height: 460px;
   overflow: hidden;
-  background: radial-gradient(
-    circle at 50% 48%,
-    #0b263c 0%,
-    #050d1c 42%,
-    #020611 100%
-  );
+  background: #020712;
 }
 .threat-map.threat-map--fullscreen {
   position: fixed;
