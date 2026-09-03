@@ -69,6 +69,20 @@ process should run for a database. If the API is scaled horizontally, disable
 its embedded schedulers and move jobs to one dedicated worker or an external
 scheduler.
 
+For serverless deployments, set `SCHEDULER_ENABLED=false` and
+`EXTERNAL_SCHEDULER_ENABLED=true`, then invoke this single command from one
+external scheduler every three hours:
+
+```powershell
+python -m app.jobs coordinator
+```
+
+The coordinator runs collection, pending enrichment, and deterministic analysis
+in order, then checks the persisted weekly/monthly report schedule. It uses a
+PostgreSQL advisory lock to prevent overlapping executions and a stable report
+period key to make retries idempotent. Before the configured UTC report hour it
+continues to target the preceding completed period.
+
 Administrative mutation routes require `X-API-Key` whenever `ADMIN_API_KEY` is
 configured. They are disabled in production if no key is configured. Generate
 a local value, place it in `.env`, and restart the backend:
@@ -140,9 +154,11 @@ docker compose exec backend python -m app.export_artifacts `
   --reports-dir /app/reports
 ```
 
-Existing files are preserved by default. Review, test, and tune the outputs,
-then commit approved artifacts with normal change control. `--overwrite` is an
-explicit opt-in for replacing files with the same stable names.
+Existing files are preserved by default. The export directories are ignored by
+Git so generated drafts do not become repository noise. Review, test, and tune
+an output, then move it into a deliberately versioned location if it should go
+through normal change control. `--overwrite` is an explicit opt-in for replacing
+files with the same stable names.
 
 ## Deployment checklist
 
@@ -159,7 +175,8 @@ explicit opt-in for replacing files with the same stable names.
 - Keep Gemini and abuse.ch keys server-side and rotate them after suspected
   disclosure.
 - Back up PostgreSQL and test restoration on a separate instance.
-- Run only one embedded scheduler per database.
+- Run only one embedded scheduler per database, or use one external coordinator
+  with the embedded scheduler disabled.
 - Monitor connector freshness and error state; a healthy web process does not
   guarantee that every upstream source is current.
 - Never expose an unauthenticated Ollama listener outside a trusted host.

@@ -77,7 +77,9 @@ PostGIS remains the production path for spatial indexing and queries.
 ### Deterministic analytics
 
 Confidence scoring combines source corroboration, source reputation, recency,
-and available context. ATT&CK tags come from a curated malware-family mapping
+and available context. The score, formula version, calculation time, and exact
+component contributions are persisted as one analysis snapshot; upstream feed
+hints remain separate source evidence. ATT&CK tags come from a curated malware-family mapping
 backed by the official STIX catalog. Campaign candidates are graph communities
 connected by a repeated canonical indicator, or by a shared malware family or
 ASN inside the configured observation window. Time proximity can strengthen
@@ -98,6 +100,10 @@ by the application.
 FastAPI publishes versioned JSON and GeoJSON contracts. The React application
 uses those contracts for overview metrics, point clusters, density rendering,
 campaign inspection, ATT&CK trends, rules, reports, and assistant evidence.
+The IOC lineage contract connects provenance-isolated source observations to a
+payload fingerprint, confidence components, enrichment state, family-based
+ATT&CK rationale, current campaign evidence, and review-required downstream
+artifacts without exposing raw feed values.
 The browser receives only a restricted ArcGIS browser key; backend and AI
 credentials never enter the frontend bundle.
 
@@ -130,7 +136,9 @@ Provider output changes prose, not scores, tags, clusters, or response actions. 
 ## Scaling notes
 
 - Run the scheduler in one process only. In a horizontally scaled deployment,
-  move jobs to a dedicated worker or external scheduler.
+  set `SCHEDULER_ENABLED=false` and use `python -m app.jobs coordinator` from a
+  single externally scheduled job. PostgreSQL advisory locking and report
+  period keys make overlapping/retried coordinator executions safe.
 - Keep ingestion and enrichment batch sizes bounded; the free geolocation tier
   is intentionally slower than the database.
 - For large installations, move graph construction to an offline job and

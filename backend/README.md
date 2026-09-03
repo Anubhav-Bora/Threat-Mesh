@@ -132,8 +132,9 @@ After review, operators can export stable filenames into repository-owned direct
 python -m app.export_artifacts --rules-dir ..\rules --reports-dir ..\reports
 ```
 
-Existing files are preserved. Pass `--overwrite` only when replacement is intentional, review the
-diff, and make the Git commit yourself. This preserves a meaningful human approval boundary.
+Existing files are preserved. Pass `--overwrite` only when replacement is intentional. The default
+export directories are ignored by Git; move a reviewed artifact into a deliberately versioned
+location before normal change control. This preserves a meaningful human approval boundary.
 
 ## Verification
 

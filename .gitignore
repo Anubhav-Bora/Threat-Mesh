@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 !**/.env.example
+.envrc
+*.local
 *.pem
 *.key
 *.p12
@@ -17,7 +19,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 coverage.xml
+coverage.json
 htmlcov/
 .venv/
 venv/
@@ -28,6 +32,8 @@ dist/
 coverage/
 *.tsbuildinfo
 .eslintcache
+.vite/
+.npm/
 
 # Runtime data
 /data/
@@ -35,9 +41,16 @@ coverage/
 *.sqlite
 *.sqlite3
 *.log
+*.pid
+
+# Generated analyst exports (move reviewed artifacts elsewhere before committing)
+/reports/
+/rules/
 
 # Editors and operating systems
 .idea/
+.agents/
+.codex/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -52,3 +65,12 @@ Desktop.ini
 tmp/
 test-results/
 playwright-report/
+junit.xml
+.scannerwork/
+
+# Cloud deployment state (project-specific; templates remain versioned)
+.firebase/
+.firebaserc
+firebase-debug.log*
+/deploy/gcp/README.md
+/deploy/gcp/runtime.env.yaml

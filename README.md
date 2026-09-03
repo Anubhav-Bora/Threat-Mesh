@@ -27,11 +27,11 @@ change confidence, technique mapping, clustering, or response decisions.
 |---|---|
 | Passive collection | Bounded async connectors for URLhaus, ThreatFox, and Feodo Tracker with normalized, idempotent upserts and feed-run history |
 | Geospatial context | Cached backend-only IP/ASN enrichment, PostGIS geography points, clustering, heatmap, and illustrative geodesic uncertainty views |
-| Intelligence analysis | Explainable confidence scoring, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
+| Intelligence analysis | Versioned confidence snapshots with per-signal evidence, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
 | Detection engineering | Stable Sigma and Suricata templates with provenance and mandatory human-review labeling |
 | Analyst reporting | Evidence-bounded weekly or monthly CTI reports with a persisted runtime schedule and configurable Gemini, local Ollama, or no-LLM operation |
 | Natural-language access | Retrieval-first assistant with server-validated evidence IDs, forged-citation rejection, and exact record pivots instead of unrestricted text-to-SQL |
-| Operations | APScheduler jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
+| Operations | Embedded or external scheduled jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
 | Portfolio UX | Responsive React/TypeScript console with overview, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |
 
 ## Architecture
@@ -55,6 +55,10 @@ The detailed [architecture](docs/architecture.md),
 [methodology](docs/methodology.md), [operations guide](docs/operations.md), and
 [architecture decisions](docs/decisions/) describe trust boundaries and the
 trade-offs behind the design.
+
+The included deployment templates support a scale-to-zero portfolio layout:
+Firebase Hosting, a Cloud Run API and coordinator job, Cloud Scheduler, Secret
+Manager, and an external PostgreSQL/PostGIS database.
 
 ## Quick start
 
@@ -186,8 +190,9 @@ backend/
     enrichment/      literal-IP geolocation and ASN cache
     attack_mapping/  ATT&CK STIX catalog and reviewed aliases
     clustering/      graph construction and community detection
-    scoring/         explainable confidence calculation
-    detection_rules/ review-gated Sigma and Suricata generation
+    scoring/         versioned confidence evidence snapshots
+    evidence/        per-IOC provenance and derivation lineage
+    detection_rules/ review-required Sigma and Suricata generation
     genai/            evidence-first provider abstraction
     api/              versioned REST and GeoJSON contracts
   alembic/            production schema history
@@ -195,8 +200,8 @@ backend/
 frontend/
   src/                analyst workspaces, map, charts, and API client
 docs/                  architecture, methodology, setup, and decisions
-reports/               versionable report artifacts
-rules/                 versionable detection artifacts
+reports/               local report exports (ignored by Git)
+rules/                 local detection exports (ignored by Git)
 ```
 
 ## Safety and limitations
@@ -208,6 +213,9 @@ rules/                 versionable detection artifacts
   their radius is a visual context buffer, not a calibrated error bound.
 - Campaigns are correlation candidates, not actor attribution.
 - Confidence is a queue-prioritization heuristic, not a probability or verdict.
+- Each completed score stores its formula version, evaluation time, and exact
+  component points. New feed observations remain analysis-pending rather than
+  presenting an upstream feed hint as a ThreatMesh score.
 - Generated rules and prose require analyst review and are never deployed
   automatically.
 - Assistant citation validation proves that a displayed evidence ID belonged to

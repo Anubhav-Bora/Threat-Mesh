@@ -35,6 +35,12 @@ The result helps an analyst order a queue. It is not a probability, verdict, or
 authorization to block infrastructure. Threshold labels are deliberately
 described as low, medium, and high *confidence*, not risk or severity.
 
+Feed-supplied confidence is stored separately as source evidence. It is never
+substituted for this formula. A completed calculation persists all four point
+contributions, the formula version, and one UTC evaluation timestamp so the
+displayed total can be audited later even as observation recency changes. A
+newly collected record is labeled analysis-pending until that calculation runs.
+
 The shared presentation bands are **high ≥ 70**, **medium 40–69.9**, and
 **low < 40**. The default detection-candidate threshold is 70, so the dashboard,
 scheduled report, API summary, and rule workflow reconcile to the same boundary.
