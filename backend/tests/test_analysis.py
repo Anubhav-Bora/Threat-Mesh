@@ -63,6 +63,15 @@ def test_settings_normalizes_report_weekday() -> None:
     assert Settings(_env_file=None, report_day_of_week="Tuesday").report_day_of_week == "tue"
 
 
+def test_settings_rejects_two_scheduler_owners() -> None:
+    with pytest.raises(ValidationError, match="cannot both be true"):
+        Settings(
+            _env_file=None,
+            scheduler_enabled=True,
+            external_scheduler_enabled=True,
+        )
+
+
 def test_question_period_understands_supported_relative_time_intents() -> None:
     end = datetime(2026, 8, 26, 12, tzinfo=UTC)
     assert _question_period("last 7 days", date_from=None, date_to=end)[0] == end - timedelta(

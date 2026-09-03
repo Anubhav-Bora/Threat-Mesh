@@ -15,10 +15,6 @@ import { useRules } from "../hooks/useThreatData";
 import { markSyntheticArtifact } from "../utils/artifacts";
 import { downloadText, formatRelative } from "../utils/format";
 
-const RULE_GENERATION_COMMAND = `$env:ADMIN_API_KEY = Read-Host 'Enter the same ADMIN_API_KEY value from .env'
-$headers = @{'X-API-Key' = $env:ADMIN_API_KEY}
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/api/v1/rules/generate' -Headers $headers -ContentType 'application/json' -Body '{"minimum_confidence":70,"limit":500}'`;
-
 export default function RulesPage() {
   const query = useRules();
   const rules = useMemo(() => query.data?.data ?? [], [query.data]);
@@ -61,18 +57,8 @@ export default function RulesPage() {
       <section className="panel">
         <EmptyState
           title="No detection candidates generated"
-          description="Generate rules from high-confidence, well-tagged observations. ThreatMesh treats every generated rule as a candidate requiring analyst validation before operational use."
+          description="The analysis pipeline creates candidates from high-confidence, well-tagged observations. Every generated rule requires analyst validation before operational use."
         />
-        <div className="operator-instruction">
-          <strong>PowerShell command</strong>
-          <code>{RULE_GENERATION_COMMAND}</code>
-          <CopyButton text={RULE_GENERATION_COMMAND} label="Copy command" />
-          <span>
-            Run this from the project computer and enter the ADMIN_API_KEY from
-            the root .env file when prompted. Refresh this page after the
-            command finishes.
-          </span>
-        </div>
       </section>
     );
 
@@ -89,7 +75,7 @@ export default function RulesPage() {
               {rules.filter((rule) => rule.requiresReview).length}
             </strong>
           </div>
-          <small>Versioned content</small>
+          <small>Generated candidates</small>
         </article>
         <article className="mini-stat">
           <span className="mini-stat__icon mini-stat__icon--amber">
@@ -104,7 +90,7 @@ export default function RulesPage() {
         <article className="review-policy">
           <ShieldCheck size={20} />
           <div>
-            <strong>Review gate enforced</strong>
+            <strong>Review required</strong>
             <span>Generated rules never deploy autonomously.</span>
           </div>
         </article>

@@ -253,6 +253,7 @@ class RetrievalQAService:
                     "port": ioc.port,
                     "family": ioc.malware_family,
                     "confidence": ioc.confidence_score,
+                    "confidence_snapshot": _compact_confidence_snapshot(ioc),
                     "last_seen": ioc.last_seen.isoformat(),
                     "country": ioc.country,
                     "asn": ioc.asn,
@@ -283,6 +284,23 @@ class RetrievalQAService:
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _compact_confidence_snapshot(ioc: IOC) -> dict[str, object] | None:
+    if not ioc.confidence_model_version or not ioc.confidence_scored_at:
+        return None
+    components = ioc.confidence_components if isinstance(ioc.confidence_components, list) else []
+    points = {
+        str(item.get("key")): item.get("score")
+        for item in components
+        if isinstance(item, dict) and item.get("key") and item.get("score") is not None
+    }
+    return {
+        "formula_version": ioc.confidence_model_version,
+        "calculated_at": ioc.confidence_scored_at.isoformat(),
+        "component_points": points,
+        "interpretation": "deterministic prioritization heuristic, not probability",
+    }
 
 
 def _question_period(

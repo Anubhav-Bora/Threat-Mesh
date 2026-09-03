@@ -347,7 +347,11 @@ export default function IndicatorsPage() {
                     </strong>
                   </td>
                   <td>
-                    <Confidence score={item.confidence} compact />
+                    {item.confidenceAvailable === false ? (
+                      <Badge tone="neutral">Pending</Badge>
+                    ) : (
+                      <Confidence score={item.confidence} compact />
+                    )}
                   </td>
                   <td>
                     <span className="location-cell">

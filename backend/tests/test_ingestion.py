@@ -23,6 +23,7 @@ from app.ingestion.service import IngestionService
 from app.ingestion.threatfox import ThreatFoxConnector
 from app.ingestion.urlhaus import URLhausConnector
 from app.models import IOC, FeedRun, FeedRunStatus, IOCType
+from tests.factories import make_ioc
 
 
 def test_feed_parsers_normalize_and_preserve_ports() -> None:
@@ -403,6 +404,136 @@ async def test_feed_upsert_is_idempotent(app, settings) -> None:
         assert ioc.first_seen < ioc.last_seen
         assert ioc.malware_family == "Emotet"
         assert ioc.is_demo is False
+
+
+@pytest.mark.asyncio
+async def test_feed_refresh_invalidates_all_confidence_snapshots_for_identity(app) -> None:
+    now = datetime.now(UTC)
+    first = make_ioc(
+        value="8.8.4.4",
+        port=53,
+        source="source-a",
+        confidence_score=81,
+        confidence_model_version="heuristic-v1",
+        confidence_scored_at=now - timedelta(minutes=10),
+        confidence_components=[{"key": "source", "score": 32}],
+    )
+    sibling = make_ioc(
+        value="8.8.4.4",
+        port=53,
+        source="source-b",
+        confidence_score=86,
+        confidence_model_version="heuristic-v1",
+        confidence_scored_at=now - timedelta(minutes=10),
+        confidence_components=[{"key": "source", "score": 32}],
+    )
+    async with app.state.database.session_factory() as session:
+        session.add_all([first, sibling])
+        await session.commit()
+
+        inserted = await IngestionService._upsert(
+            session,
+            NormalizedIOC(
+                ioc_value="8.8.4.4",
+                ioc_type=IOCType.IP,
+                port=53,
+                first_seen=now - timedelta(hours=4),
+                last_seen=now,
+                source_feed="source-a",
+                confidence_hint=90,
+            ),
+        )
+        await session.commit()
+
+        rows = list((await session.scalars(select(IOC).order_by(IOC.source_feed))).all())
+
+    assert inserted is False
+    assert [row.source_feed for row in rows] == ["source-a", "source-b"]
+    assert all(row.confidence_score == 0 for row in rows)
+    assert all(row.confidence_model_version is None for row in rows)
+    assert all(row.confidence_scored_at is None for row in rows)
+    assert all(row.confidence_components is None for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_new_corroborating_source_invalidates_existing_snapshot(app) -> None:
+    now = datetime.now(UTC)
+    existing = make_ioc(
+        value="1.1.1.1",
+        port=443,
+        source="source-a",
+        confidence_score=73,
+        confidence_model_version="heuristic-v1",
+        confidence_scored_at=now - timedelta(minutes=10),
+        confidence_components=[{"key": "source", "score": 32}],
+    )
+    async with app.state.database.session_factory() as session:
+        session.add(existing)
+        await session.commit()
+
+        inserted = await IngestionService._upsert(
+            session,
+            NormalizedIOC(
+                ioc_value="1.1.1.1",
+                ioc_type=IOCType.IP,
+                port=443,
+                first_seen=now - timedelta(hours=2),
+                last_seen=now,
+                source_feed="source-b",
+                confidence_hint=75,
+            ),
+        )
+        await session.commit()
+        rows = list((await session.scalars(select(IOC).order_by(IOC.source_feed))).all())
+
+    assert inserted is True
+    assert [row.source_feed for row in rows] == ["source-a", "source-b"]
+    assert all(row.confidence_score == 0 for row in rows)
+    assert all(row.confidence_model_version is None for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_identical_feed_refresh_preserves_confidence_snapshot(app) -> None:
+    now = datetime.now(UTC)
+    existing = make_ioc(
+        value="9.9.9.9",
+        port=53,
+        source="source-a",
+        family="ExampleLoader",
+        confidence_score=77,
+        source_confidence_hint=60,
+        confidence_model_version="heuristic-v1",
+        confidence_scored_at=now - timedelta(minutes=10),
+        confidence_components=[{"key": "source", "score": 32}],
+    )
+    unchanged_last_seen = existing.last_seen
+    async with app.state.database.session_factory() as session:
+        session.add(existing)
+        await session.commit()
+
+        inserted = await IngestionService._upsert(
+            session,
+            NormalizedIOC(
+                ioc_value="9.9.9.9",
+                ioc_type=IOCType.IP,
+                port=53,
+                first_seen=now - timedelta(days=2),
+                last_seen=unchanged_last_seen,
+                source_feed="source-a",
+                malware_family="ExampleLoader",
+                confidence_hint=95,
+                raw_json={"refreshed": True},
+            ),
+        )
+        await session.commit()
+        row = await session.scalar(select(IOC))
+
+    assert inserted is False
+    assert row is not None
+    assert row.confidence_score == 77
+    assert row.confidence_model_version == "heuristic-v1"
+    assert row.confidence_components == [{"key": "source", "score": 32}]
+    assert row.source_confidence_hint == 95
 
 
 @pytest.mark.asyncio

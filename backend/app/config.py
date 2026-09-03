@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     ai_rate_limit_per_minute: int = Field(default=12, gt=0)
 
     scheduler_enabled: bool = True
+    external_scheduler_enabled: bool = False
     run_jobs_on_startup: bool = False
     feed_sync_hours: int = Field(default=3, gt=0)
     enrichment_interval_minutes: int = Field(default=15, gt=0)
@@ -113,6 +114,12 @@ class Settings(BaseSettings):
         if normalized not in aliases:
             raise ValueError("report_day_of_week must be a weekday name or three-letter code")
         return aliases[normalized]
+
+    @model_validator(mode="after")
+    def validate_scheduler_ownership(self) -> Settings:
+        if self.scheduler_enabled and self.external_scheduler_enabled:
+            raise ValueError("scheduler_enabled and external_scheduler_enabled cannot both be true")
+        return self
 
     @property
     def is_production(self) -> bool:

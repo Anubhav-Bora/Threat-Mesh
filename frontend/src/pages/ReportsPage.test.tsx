@@ -48,6 +48,7 @@ const scheduleRefetchMock = vi.hoisted(() => vi.fn());
 const schedule: ReportSchedule = {
   cadence: "weekly",
   schedulerRunning: true,
+  schedulerMode: "embedded",
   providerConfigured: true,
   adminAuthRequired: true,
   nextRunAt: "2026-08-31T06:00:00Z",
@@ -80,6 +81,7 @@ describe("ReportsPage automatic reporting", () => {
     vi.restoreAllMocks();
     schedule.adminAuthRequired = true;
     schedule.providerConfigured = true;
+    schedule.schedulerMode = "embedded";
     scheduleRefetchMock.mockReset();
     scheduleRefetchMock.mockResolvedValue(undefined);
     useReportMock.mockReset();
@@ -119,6 +121,17 @@ describe("ReportsPage automatic reporting", () => {
     expect(screen.queryByText(/Generate report/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/PowerShell command/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ADMIN_API_KEY/i)).not.toBeInTheDocument();
+  });
+
+  it("labels an external schedule as managed rather than claiming process liveness", () => {
+    schedule.schedulerMode = "external";
+    render(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("externally managed")).toBeInTheDocument();
   });
 
   it("authorizes a cadence change once and sends the key only in the request", async () => {

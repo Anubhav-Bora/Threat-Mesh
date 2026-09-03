@@ -5,16 +5,22 @@ from sqlalchemy import select
 
 from app.api.dependencies import AdminDep, SessionDep
 from app.api.schemas import OperationResult
-from app.attack_mapping import AttackMappingService
-from app.clustering import ClusteringService
-from app.detection_rules import DetectionRuleService
 from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.ingestion import IngestionService
 from app.models import FeedRun, FeedRunStatus
-from app.scoring import ConfidenceService
+from app.pipeline import PipelineService
 
 router = APIRouter(tags=["pipeline operations"])
+
+
+def _require_embedded_pipeline_control(request: Request) -> None:
+    if request.app.state.settings.external_scheduler_enabled:
+        raise AppError(
+            409,
+            "pipeline_externally_managed",
+            "Pipeline mutations are owned by the external coordinator in this deployment.",
+        )
 
 
 async def _enter_job(request: Request, name: str):
@@ -26,6 +32,7 @@ async def _enter_job(request: Request, name: str):
 
 @router.post("/feeds/sync", response_model=OperationResult)
 async def sync_feeds(request: Request, _: AdminDep) -> OperationResult:
+    _require_embedded_pipeline_control(request)
     lock = await _enter_job(request, "feeds")
     async with lock:
         service = IngestionService(
@@ -64,6 +71,7 @@ async def feed_status(session: SessionDep) -> list[dict[str, object]]:
 
 @router.post("/enrichment/run", response_model=OperationResult)
 async def run_enrichment(request: Request, _: AdminDep) -> OperationResult:
+    _require_embedded_pipeline_control(request)
     lock = await _enter_job(request, "enrichment")
     async with lock:
         service = EnrichmentService(
@@ -74,21 +82,12 @@ async def run_enrichment(request: Request, _: AdminDep) -> OperationResult:
 
 @router.post("/analysis/run", response_model=OperationResult)
 async def run_analysis(request: Request, _: AdminDep) -> OperationResult:
+    _require_embedded_pipeline_control(request)
     lock = await _enter_job(request, "analysis")
     async with lock:
-        factory = request.app.state.database.session_factory
-        mapping = await AttackMappingService(factory).map_indicators()
-        scoring = await ConfidenceService(factory).recalculate()
-        clustering = await ClusteringService(factory, request.app.state.settings).rebuild()
-        rules = await DetectionRuleService(factory).generate(
-            minimum_confidence=request.app.state.settings.minimum_rule_confidence,
-            limit=1000,
-        )
         return OperationResult(
-            details={
-                "attack_mapping": mapping,
-                "confidence": scoring,
-                "clustering": clustering,
-                "rules": rules,
-            }
+            details=await PipelineService(
+                request.app.state.database.session_factory,
+                request.app.state.settings,
+            ).run_analysis()
         )

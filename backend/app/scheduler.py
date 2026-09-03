@@ -9,17 +9,14 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.attack_mapping import AttackMappingService
-from app.clustering import ClusteringService
 from app.config import Settings
-from app.detection_rules import DetectionRuleService
 from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.genai import ReportService, build_provider
 from app.ingestion import IngestionService
 from app.models import ReportCadence, ReportSchedule
+from app.pipeline import PipelineService
 from app.report_scheduling import ReportScheduleStore, calendar_report_period
-from app.scoring import ConfidenceService
 
 logger = logging.getLogger(__name__)
 REPORT_JOB_ID = "scheduled-report"
@@ -133,17 +130,8 @@ class SchedulerManager:
 
     async def run_analysis(self) -> None:
         async with self.locks["analysis"]:
-            mapping = await AttackMappingService(self.session_factory).map_indicators()
-            scores = await ConfidenceService(self.session_factory).recalculate()
-            clusters = await ClusteringService(self.session_factory, self.settings).rebuild()
-            rules = await DetectionRuleService(self.session_factory).generate(
-                minimum_confidence=self.settings.minimum_rule_confidence,
-                limit=1000,
-            )
-            logger.info(
-                "Scheduled analysis completed: %s",
-                {"mapping": mapping, "scores": scores, "clusters": clusters, "rules": rules},
-            )
+            result = await PipelineService(self.session_factory, self.settings).run_analysis()
+            logger.info("Scheduled analysis completed: %s", result)
 
     async def run_scheduled_report(self, cadence: ReportCadence) -> None:
         try:

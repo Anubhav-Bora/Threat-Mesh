@@ -134,6 +134,10 @@ class IOC(TimestampMixin, Base):
     source_feed: Mapped[str] = mapped_column(String(64), nullable=False)
     is_demo: Mapped[bool] = mapped_column(default=False, server_default=false(), nullable=False)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    source_confidence_hint: Mapped[float | None] = mapped_column(Float)
+    confidence_model_version: Mapped[str | None] = mapped_column(String(32))
+    confidence_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confidence_components: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     country: Mapped[str | None] = mapped_column(String(128))
     country_code: Mapped[str | None] = mapped_column(String(2))
     city: Mapped[str | None] = mapped_column(String(128))
@@ -205,6 +209,7 @@ class Report(Base):
         server_default=ReportCadence.WEEKLY.value,
         nullable=False,
     )
+    schedule_key: Mapped[str | None] = mapped_column(String(128), unique=True)
     facts_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     is_demo: Mapped[bool] = mapped_column(default=False, server_default=false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -12,7 +12,7 @@ vi.mock("../hooks/useThreatData", () => ({
 describe("RulesPage", () => {
   beforeEach(() => useRulesMock.mockReset());
 
-  it("presents an empty live rules response as a plain operator command", () => {
+  it("keeps deployment-specific operator commands out of the empty state", () => {
     useRulesMock.mockReturnValue({
       data: { data: [], mode: "live" },
       isLoading: false,
@@ -31,10 +31,11 @@ describe("RulesPage", () => {
         name: "No detection candidates generated",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("PowerShell command")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Copy command" }),
+      screen.getByText(/analysis pipeline creates candidates/i),
     ).toBeInTheDocument();
+    expect(container).not.toHaveTextContent("PowerShell command");
+    expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
     expect(container).not.toHaveTextContent("authenticated operator request");
     expect(container).not.toHaveTextContent("**PowerShell");
     expect(container).not.toHaveTextContent("&#x20;");

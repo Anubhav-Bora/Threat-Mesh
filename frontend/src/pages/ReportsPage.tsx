@@ -154,7 +154,11 @@ function ReportSchedulePanel() {
         </div>
         {schedule && (
           <Badge tone={schedule.schedulerRunning ? "success" : "warning"} dot>
-            {schedule.schedulerRunning ? "running" : "paused"}
+            {schedule.schedulerMode === "external"
+              ? "externally managed"
+              : schedule.schedulerRunning
+                ? "running"
+                : "paused"}
           </Badge>
         )}
       </div>

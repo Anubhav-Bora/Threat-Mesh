@@ -39,7 +39,7 @@ export function CampaignGraph({ campaign }: { campaign: Campaign }) {
       <svg
         viewBox="0 0 520 320"
         role="img"
-        aria-label={`Relationship graph for ${campaign.label}`}
+        aria-label={`Relationship evidence summary for ${campaign.label}`}
       >
         <defs>
           <radialGradient id="campaign-node">

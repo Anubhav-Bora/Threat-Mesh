@@ -32,6 +32,7 @@ describe("FastAPI client contract", () => {
               last_seen: "2026-08-02T00:00:00Z",
               source_feed: "ThreatFox",
               confidence_score: 91,
+              confidence_model_version: "heuristic-v1",
               is_demo: true,
               location_precision_km: 25,
               country: "Germany",
@@ -56,10 +57,48 @@ describe("FastAPI client contract", () => {
       longitude: 8.68,
       campaignId: "3",
       confidence: 91,
+      confidenceAvailable: true,
       isDemo: true,
       locationPrecisionKm: 25,
     });
     expect(result).toMatchObject({ total: 1, limit: 500, offset: 0 });
+  });
+
+  it("marks a present null confidence model as analysis pending", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        type: "FeatureCollection",
+        total: 1,
+        limit: 500,
+        offset: 0,
+        features: [
+          {
+            id: 43,
+            type: "Feature",
+            geometry: null,
+            properties: {
+              id: 43,
+              ioc_value: "pending.example",
+              ioc_type: "domain",
+              first_seen: "2026-08-01T00:00:00Z",
+              last_seen: "2026-08-02T00:00:00Z",
+              source_feed: "URLhaus",
+              confidence_score: 0,
+              confidence_model_version: null,
+              attack_technique_ids: [],
+            },
+          },
+        ],
+      }),
+    );
+
+    const result = await threatApi.indicators();
+
+    expect(result.data[0]).toMatchObject({
+      id: "43",
+      confidence: 0,
+      confidenceAvailable: false,
+    });
   });
 
   it("keeps ungeolocated records out of Null Island", async () => {
@@ -99,6 +138,137 @@ describe("FastAPI client contract", () => {
       corroboratingFeeds: null,
       status: null,
     });
+  });
+
+  it("normalizes an IOC evidence-lineage snapshot without exposing raw payload data", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        indicator_id: 41,
+        record_id: "ioc:41",
+        identity: {
+          value: "198.51.100.3",
+          type: "ip",
+          port: 443,
+          is_demo: false,
+        },
+        provenance: {
+          selected_source: "ThreatFox",
+          observations: [
+            {
+              record_id: "ioc:41",
+              source_feed: "ThreatFox",
+              first_seen: "2026-08-01T00:00:00Z",
+              last_seen: "2026-08-02T00:00:00Z",
+              source_confidence_hint: 90,
+              is_selected: true,
+            },
+          ],
+          raw_payload: {
+            retained: true,
+            sha256: "4a44dc15364204a80fe80e9039455cc1608281820fe2b24e39b8b12d7",
+            field_names: ["ioc", "malware"],
+            raw_json: { secret: "must not leave the client normalizer" },
+          },
+        },
+        confidence: {
+          status: "available",
+          total: 87,
+          formula_version: "v1",
+          calculated_at: "2026-08-02T01:00:00Z",
+          components: [
+            {
+              key: "source",
+              label: "Source reputation",
+              score: 36,
+              max_score: 40,
+              evidence: "ThreatFox source prior",
+            },
+          ],
+        },
+        enrichment: {
+          status: "available",
+          provider: "ip-api",
+          method: "cached passive lookup",
+          country: "Germany",
+          country_code: "DE",
+          city: "Frankfurt",
+          asn: "AS64500",
+          asn_org: "Example Network",
+          approximate: true,
+        },
+        attack_mappings: [
+          {
+            record_id: "technique:T1071.001",
+            technique_id: "T1071.001",
+            name: "Web Protocols",
+            tactic: "Command and Control",
+            method: "curated family mapping",
+            basis: "Example family",
+            inference: true,
+          },
+        ],
+        campaign_membership: {
+          record_id: "campaign:7",
+          label: "Cluster 7",
+          snapshot: "current",
+          reasons: ["shared family"],
+        },
+        derived_artifacts: {
+          rules: [
+            {
+              record_id: "rule:9",
+              rule_type: "suricata",
+              requires_review: true,
+              generated_at: "2026-08-02T02:00:00Z",
+            },
+          ],
+          report_mentions: [],
+        },
+        limitations: ["IP geolocation is approximate."],
+      }),
+    );
+
+    const result = await threatApi.indicatorLineage("41");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/iocs/41/lineage");
+    expect(result.data).toMatchObject({
+      indicatorId: "41",
+      recordId: "ioc:41",
+      identity: { port: 443, isDemo: false },
+      provenance: {
+        selectedSource: "ThreatFox",
+        observations: [expect.objectContaining({ sourceConfidenceHint: 90 })],
+        rawPayload: {
+          retained: true,
+          fieldNames: ["ioc", "malware"],
+        },
+      },
+      confidence: {
+        status: "available",
+        total: 87,
+        formulaVersion: "v1",
+        components: [
+          expect.objectContaining({
+            key: "source",
+            score: 36,
+            maxScore: 40,
+          }),
+        ],
+      },
+      enrichment: { countryCode: "DE", approximate: true },
+      attackMappings: [expect.objectContaining({ techniqueId: "T1071.001" })],
+      campaignMembership: { recordId: "campaign:7" },
+      derivedArtifacts: {
+        rules: [
+          expect.objectContaining({
+            ruleType: "suricata",
+            requiresReview: true,
+          }),
+        ],
+      },
+    });
+    expect(result.data?.provenance.rawPayload).not.toHaveProperty("rawJson");
+    expect(JSON.stringify(result.data)).not.toContain("must not leave");
   });
 
   it("requests a live-only IOC page for mixed-corpus operational views", async () => {
@@ -327,6 +497,7 @@ describe("FastAPI client contract", () => {
       jsonResponse({
         cadence: "monthly",
         scheduler_running: true,
+        scheduler_mode: "external",
         provider_configured: true,
         admin_auth_required: true,
         next_run_at: "2026-09-01T06:00:00Z",
@@ -346,6 +517,7 @@ describe("FastAPI client contract", () => {
       data: {
         cadence: "monthly",
         schedulerRunning: true,
+        schedulerMode: "external",
         providerConfigured: true,
         adminAuthRequired: true,
         nextRunAt: "2026-09-01T06:00:00Z",
@@ -365,6 +537,7 @@ describe("FastAPI client contract", () => {
         jsonResponse({
           cadence: "weekly",
           scheduler_running: true,
+          scheduler_mode: "embedded",
           provider_configured: true,
           admin_auth_required: true,
           next_run_at: "2026-08-31T06:00:00Z",

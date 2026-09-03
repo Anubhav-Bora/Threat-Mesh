@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import case, cast, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -47,6 +48,18 @@ class ReportService:
                     "period_end": end.isoformat(),
                 },
             )
+        schedule_key = report_schedule_key(
+            cadence,
+            start,
+            end,
+            is_demo=facts["analysis_scope"] == "demo",
+        )
+        async with self.session_factory() as session:
+            existing = await session.scalar(
+                select(Report).where(Report.schedule_key == schedule_key)
+            )
+            if existing is not None:
+                return existing
         facts["report_cadence"] = cadence.value
         prompt = (
             "Reporting period (UTC): "
@@ -65,11 +78,23 @@ class ReportService:
                 provider=response.provider,
                 model=response.model,
                 cadence=cadence,
+                schedule_key=schedule_key,
                 facts_json=facts,
                 is_demo=facts["analysis_scope"] == "demo",
             )
             session.add(report)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Cloud job retries can race. The stable period key makes the
+                # operation idempotent without trusting process-local locks.
+                await session.rollback()
+                existing = await session.scalar(
+                    select(Report).where(Report.schedule_key == schedule_key)
+                )
+                if existing is None:
+                    raise
+                return existing
             await session.refresh(report)
             return report
 
@@ -101,7 +126,7 @@ class ReportService:
             (
                 await session.scalars(
                     select(IOC)
-                    .where(*period)
+                    .where(*period, IOC.confidence_score >= 70)
                     .order_by(IOC.confidence_score.desc(), IOC.last_seen.desc(), IOC.id.desc())
                     .limit(25)
                 )
@@ -167,6 +192,8 @@ class ReportService:
             ],
             "sample_high_confidence_observations": [
                 {
+                    "id": ioc.id,
+                    "record_id": f"ioc:{ioc.id}",
                     "value": ioc.ioc_value,
                     "type": ioc.ioc_type.value,
                     "port": ioc.port,
@@ -187,6 +214,17 @@ class ReportService:
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def report_schedule_key(
+    cadence: ReportCadence,
+    start: datetime,
+    end: datetime,
+    *,
+    is_demo: bool,
+) -> str:
+    provenance = "demo" if is_demo else "live"
+    return f"{cadence.value}:{_utc(start).isoformat()}:{_utc(end).isoformat()}:{provenance}"
 
 
 async def top_counts(

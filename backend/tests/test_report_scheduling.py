@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -36,6 +36,23 @@ def test_monthly_calendar_period_handles_year_rollover() -> None:
 
 
 @pytest.mark.asyncio
+async def test_low_confidence_observations_are_not_labeled_high_confidence(app) -> None:
+    indicator = make_ioc(value="9.9.9.9", confidence_score=69.9)
+    async with app.state.database.session_factory() as session:
+        session.add(indicator)
+        await session.commit()
+        now = datetime.now(UTC)
+        facts = await ReportService.collect_facts(
+            session,
+            now - timedelta(days=365),
+            now + timedelta(days=1),
+        )
+
+    assert facts["high_confidence_observations"] == 0
+    assert facts["sample_high_confidence_observations"] == []
+
+
+@pytest.mark.asyncio
 async def test_report_schedule_api_is_public_to_read_and_admin_only_to_change(client, app) -> None:
     initial = await client.get("/api/v1/reports/schedule")
 
@@ -43,6 +60,7 @@ async def test_report_schedule_api_is_public_to_read_and_admin_only_to_change(cl
     assert initial.json() == {
         "cadence": "weekly",
         "scheduler_running": False,
+        "scheduler_mode": "disabled",
         "provider_configured": False,
         "next_run_at": None,
         "timezone": "UTC",
@@ -108,6 +126,7 @@ async def test_running_scheduler_update_installs_matching_job_and_next_run(clien
     assert changed.status_code == 200
     body = changed.json()
     assert body["scheduler_running"] is True
+    assert body["scheduler_mode"] == "embedded"
     assert body["next_run_at"] is not None
     job = manager.scheduler.get_job(REPORT_JOB_ID)
     assert job is not None
@@ -195,3 +214,43 @@ async def test_monthly_report_records_cadence_and_calendar_title(app) -> None:
     assert report.facts_json["report_cadence"] == "monthly"
     async with app.state.database.session_factory() as session:
         assert await session.scalar(select(func.count(IOC.id))) == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduled_report_generation_is_idempotent_for_period_and_provenance(app) -> None:
+    indicator = make_ioc(value="1.1.1.1")
+    indicator.first_seen = datetime(2026, 8, 24, tzinfo=UTC)
+    indicator.last_seen = datetime(2026, 8, 30, tzinfo=UTC)
+    async with app.state.database.session_factory() as session:
+        session.add(indicator)
+        await session.commit()
+
+    provider = StaticProvider("Grounded weekly report.")
+    service = ReportService(app.state.database.session_factory, provider)
+    arguments = {
+        "period_start": datetime(2026, 8, 24, tzinfo=UTC),
+        "period_end": datetime(2026, 8, 31, tzinfo=UTC),
+        "cadence": ReportCadence.WEEKLY,
+    }
+    first = await service.generate(**arguments)
+    second = await service.generate(**arguments)
+
+    assert second.id == first.id
+    assert len(provider.prompts) == 1
+    assert first.schedule_key is not None and first.schedule_key.endswith(":live")
+    async with app.state.database.session_factory() as session:
+        assert await session.scalar(select(func.count(Report.id))) == 1
+
+
+@pytest.mark.asyncio
+async def test_external_scheduler_reports_next_run_without_embedded_process(client, app) -> None:
+    app.state.settings.external_scheduler_enabled = True
+
+    response = await client.get("/api/v1/reports/schedule")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scheduler_running"] is True
+    assert body["scheduler_mode"] == "external"
+    assert body["next_run_at"] is not None
+    assert app.state.scheduler_manager.scheduler.running is False

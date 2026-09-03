@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -88,6 +89,27 @@ def calendar_report_period(
         microsecond=0,
     )
     return end - timedelta(days=7), end
+
+
+def next_report_run(
+    cadence: ReportCadence,
+    reference: datetime,
+    *,
+    weekly_day: str,
+    hour_utc: int,
+) -> datetime | None:
+    """Compute the next external or embedded scheduler boundary in UTC."""
+
+    options: dict[str, object] = {
+        "hour": hour_utc,
+        "minute": 0,
+        "timezone": UTC,
+    }
+    if cadence is ReportCadence.WEEKLY:
+        options["day_of_week"] = weekly_day
+    else:
+        options["day"] = 1
+    return CronTrigger(**options).get_next_fire_time(None, _utc(reference))
 
 
 def _utc(value: datetime) -> datetime:

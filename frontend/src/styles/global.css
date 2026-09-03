@@ -1214,6 +1214,9 @@ input[type="range"] {
 .arcgis-raster-marker.confidence-medium {
   --marker-color: #f4b860;
 }
+.arcgis-raster-marker.confidence-pending {
+  --marker-color: #94a3b8;
+}
 .arcgis-raster-marker__dot,
 .arcgis-raster-marker__glow,
 .arcgis-raster-marker__precision,
@@ -1936,6 +1939,317 @@ input[type="range"] {
   background: rgb(103 183 247 / 3%);
   font-size: 8.5px;
   line-height: 1.5;
+}
+.detail-section__title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+}
+.detail-section__title h3 {
+  margin: 0;
+}
+.lineage-score-section {
+  background:
+    linear-gradient(135deg, rgb(110 231 216 / 3%), transparent 48%), #0c1119;
+}
+.lineage-score-total,
+.lineage-status {
+  flex: none;
+  border: 1px solid rgb(110 231 216 / 18%);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--teal);
+  background: rgb(110 231 216 / 6%);
+  font-size: 8px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.025em;
+}
+.lineage-status--pending {
+  border-color: rgb(250 184 90 / 18%);
+  color: #eeb663;
+  background: rgb(250 184 90 / 5%);
+}
+.score-evidence-list {
+  display: grid;
+  gap: 11px;
+}
+.score-evidence__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.score-evidence__head strong {
+  color: #cbd6e2;
+  font-size: 8.5px;
+  font-weight: 600;
+}
+.score-evidence__head span {
+  color: #96a6b7;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.score-evidence__track {
+  height: 3px;
+  margin: 5px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #202a35;
+}
+.score-evidence__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7569ee, var(--teal));
+  box-shadow: 0 0 9px rgb(110 231 216 / 24%);
+}
+.score-evidence p,
+.lineage-empty,
+.lineage-method {
+  margin: 0;
+  color: #7f8e9e;
+  font-size: 8px;
+  line-height: 1.45;
+}
+.lineage-empty {
+  padding: 9px;
+  border: 1px dashed #273440;
+  border-radius: 7px;
+}
+.lineage-method {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-subtle);
+  color: #607183;
+}
+.lineage-record-id {
+  min-width: 0;
+  overflow: hidden;
+  color: #69798a;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-path {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.evidence-path li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  padding-bottom: 13px;
+}
+.evidence-path li:last-child {
+  padding-bottom: 0;
+}
+.evidence-path li:not(:last-child)::before {
+  position: absolute;
+  top: 17px;
+  bottom: 0;
+  left: 7px;
+  width: 1px;
+  background: #26333f;
+  content: "";
+}
+.evidence-path__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--teal);
+  background: #0c1119;
+}
+.evidence-path li[data-status="pending"] .evidence-path__marker {
+  color: #eeb663;
+}
+.evidence-path li[data-status="unavailable"] .evidence-path__marker {
+  color: #556779;
+}
+.evidence-path li > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.evidence-path strong {
+  color: #cbd6e2;
+  font-size: 8.5px;
+  font-weight: 600;
+}
+.evidence-path span:not(.evidence-path__marker) {
+  overflow: hidden;
+  color: #8c9cac;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-path small {
+  color: #5f7182;
+  font-size: 7.5px;
+  line-height: 1.4;
+}
+.lineage-records {
+  margin-top: 12px;
+  border: 1px solid #24313d;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 1%);
+}
+.lineage-records > summary {
+  display: flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  color: #94a4b5;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 550;
+  list-style: none;
+}
+.lineage-records > summary::-webkit-details-marker {
+  display: none;
+}
+.lineage-records > summary span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lineage-records > summary svg {
+  color: var(--teal);
+}
+.lineage-records > summary b {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  color: #8da0b2;
+  background: #1a2530;
+  font-size: 7px;
+  font-weight: 650;
+}
+.lineage-records[open] > summary {
+  border-bottom: 1px solid var(--border-subtle);
+  color: #c1ccd7;
+}
+.lineage-record-groups {
+  display: grid;
+  gap: 12px;
+  padding: 10px;
+}
+.lineage-record-groups section,
+.lineage-record-groups ul {
+  margin: 0;
+  padding: 0;
+}
+.lineage-record-groups h4 {
+  margin: 0 0 6px;
+  color: #657789;
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+.lineage-record-groups ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+.lineage-record-groups li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border-left: 2px solid #334354;
+  border-radius: 0 5px 5px 0;
+  background: #0a0f16;
+}
+.lineage-record-groups li > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.lineage-record-groups code {
+  overflow: hidden;
+  color: #718497;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineage-record-groups li > div span {
+  flex: none;
+  border-radius: 999px;
+  padding: 1px 5px;
+  color: var(--teal);
+  background: rgb(110 231 216 / 7%);
+  font-size: 6.5px;
+}
+.lineage-record-groups strong {
+  overflow-wrap: anywhere;
+  color: #bac7d4;
+  font-size: 8px;
+  font-weight: 550;
+}
+.lineage-record-groups small {
+  color: #617284;
+  font-size: 7px;
+  line-height: 1.45;
+}
+.lineage-limitations {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.lineage-limitations summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a58b68;
+  cursor: pointer;
+  font-size: 8px;
+  list-style: none;
+}
+.lineage-limitations summary::-webkit-details-marker {
+  display: none;
+}
+.lineage-limitations ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #7f8e9e;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.lineage-loading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px;
+  border: 1px dashed #2a3744;
+  border-radius: 7px;
+  color: #8292a2;
+  background: rgb(255 255 255 / 1.5%);
+  font-size: 8.5px;
+}
+.lineage-loading svg {
+  color: var(--teal);
+}
+.lineage-loading--error svg {
+  color: #eeb663;
 }
 
 /* Campaign intelligence */

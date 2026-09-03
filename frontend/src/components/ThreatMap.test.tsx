@@ -27,7 +27,21 @@ interface MockFeatureLayerHarness {
   load: ReturnType<typeof vi.fn>;
   queryObjectIds: ReturnType<typeof vi.fn>;
   applyEdits: ReturnType<typeof vi.fn>;
+  definitionExpression?: string;
   featureReduction?: { clusterRadius?: string } | null;
+  popupTemplate?: {
+    content?: Array<{
+      fieldInfos?: Array<{ fieldName?: string; label?: string }>;
+    }>;
+  };
+  renderer?: {
+    field?: string;
+    uniqueValueInfos?: Array<{
+      value?: string;
+      symbol?: { color?: string | number[] };
+    }>;
+    visualVariables?: Array<{ field?: string }>;
+  };
 }
 
 interface MockMapViewHarness {
@@ -477,6 +491,136 @@ describe("ThreatMap", () => {
     expect(
       screen.getByRole("button", { name: "Exit fullscreen map" }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps pending confidence distinct across attributes, rendering, popups, and filters", async () => {
+    const pendingIndicator: Indicator = {
+      ...indicator,
+      id: "indicator-pending",
+      value: "198.51.100.17",
+      confidence: 0,
+      confidenceAvailable: false,
+    };
+    const props = {
+      indicators: [indicator, pendingIndicator],
+      onModeChange: vi.fn(),
+      onSelect: vi.fn(),
+    };
+    const { rerender } = render(
+      <ThreatMap {...props} filters={filters} mode="clusters" />,
+    );
+
+    await waitFor(() => expect(arcgis.featureLayers).toHaveLength(1));
+    const layer = arcgis.featureLayers[0];
+    if (!layer) throw new Error("FeatureLayer mock was not constructed");
+    await waitFor(() => expect(layer.definitionExpression).toBe("1=1"));
+
+    const availableAttributes = layer.records.find(
+      (graphic) => graphic.attributes?.ioc_id === indicator.id,
+    )?.attributes;
+    const pendingAttributes = layer.records.find(
+      (graphic) => graphic.attributes?.ioc_id === pendingIndicator.id,
+    )?.attributes;
+    expect(availableAttributes).toMatchObject({
+      confidence: 92,
+      confidence_status: "Scored",
+      confidence_label: "92%",
+    });
+    expect(pendingAttributes).toMatchObject({
+      family_color: "pending",
+      confidence: null,
+      confidence_status: "Pending",
+      confidence_label: "Analysis pending",
+    });
+
+    await waitFor(() => expect(layer.renderer?.field).toBe("family_color"));
+    expect(layer.renderer?.uniqueValueInfos).toContainEqual(
+      expect.objectContaining({
+        value: "pending",
+        symbol: expect.objectContaining({ color: "#94a3b8" }),
+      }),
+    );
+    expect(layer.renderer?.visualVariables).toEqual([
+      expect.objectContaining({ field: "confidence" }),
+    ]);
+    const popupFields =
+      layer.popupTemplate?.content?.[0]?.fieldInfos?.map(
+        (field) => field.fieldName,
+      ) ?? [];
+    expect(popupFields).toContain("confidence_label");
+    expect(popupFields).toContain("confidence_status");
+    expect(popupFields).not.toContain("confidence");
+
+    rerender(
+      <ThreatMap
+        {...props}
+        filters={{ ...filters, minConfidence: 50 }}
+        mode="clusters"
+      />,
+    );
+    await waitFor(() =>
+      expect(layer.definitionExpression).toBe(
+        "confidence_status = 'Scored' AND confidence >= 50",
+      ),
+    );
+
+    rerender(<ThreatMap {...props} filters={filters} mode="heatmap" />);
+    await waitFor(() => expect(layer.renderer?.field).toBe("confidence"));
+    await waitFor(() =>
+      expect(layer.definitionExpression).toBe(
+        "confidence_status = 'Scored' AND confidence IS NOT NULL",
+      ),
+    );
+  });
+
+  it("includes pending fallback points only at the zero threshold outside heatmaps", async () => {
+    arcgis.shouldThrowMapView = true;
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const pendingIndicator: Indicator = {
+      ...indicator,
+      confidence: 0,
+      confidenceAvailable: false,
+    };
+    const props = {
+      indicators: [pendingIndicator],
+      onModeChange: vi.fn(),
+      onSelect: vi.fn(),
+    };
+    const { rerender } = render(
+      <ThreatMap {...props} filters={filters} mode="clusters" />,
+    );
+
+    const pendingMarker = await screen.findByRole("button", {
+      name: "Open 203.0.113.42, confidence analysis pending",
+    });
+    expect(pendingMarker).toBeInTheDocument();
+    expect(pendingMarker.style.getPropertyValue("--marker-color")).toBe(
+      "#94a3b8",
+    );
+
+    rerender(
+      <ThreatMap
+        {...props}
+        filters={{ ...filters, minConfidence: 1 }}
+        mode="clusters"
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: "Open 203.0.113.42, confidence analysis pending",
+        }),
+      ).not.toBeInTheDocument(),
+    );
+
+    rerender(<ThreatMap {...props} filters={filters} mode="heatmap" />);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: "Open 203.0.113.42, confidence analysis pending",
+        }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("replaces a failed MapView constructor with a real ArcGIS raster map", async () => {

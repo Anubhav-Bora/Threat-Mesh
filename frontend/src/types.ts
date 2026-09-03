@@ -32,6 +32,93 @@ export interface Indicator {
   tags: string[];
 }
 
+export type LineageConfidenceStatus = "available" | "pending";
+export type LineageEnrichmentStatus =
+  "available" | "not_applicable" | "unavailable";
+
+export interface ConfidenceComponent {
+  key: string;
+  label: string;
+  score: number;
+  maxScore: number;
+  evidence: string;
+}
+
+export interface IndicatorLineage {
+  indicatorId: string;
+  recordId: string;
+  identity: {
+    value: string;
+    type: IndicatorType;
+    port: number | null;
+    isDemo: boolean;
+  };
+  provenance: {
+    selectedSource: string;
+    observations: Array<{
+      recordId: string;
+      sourceFeed: string;
+      firstSeen: string;
+      lastSeen: string;
+      sourceConfidenceHint: number | null;
+      isSelected: boolean;
+    }>;
+    rawPayload: {
+      retained: boolean;
+      sha256: string | null;
+      fieldNames: string[];
+    };
+  };
+  confidence: {
+    status: LineageConfidenceStatus;
+    total: number | null;
+    formulaVersion: string | null;
+    calculatedAt: string | null;
+    components: ConfidenceComponent[];
+  };
+  enrichment: {
+    status: LineageEnrichmentStatus;
+    provider: string | null;
+    method: string;
+    country: string | null;
+    countryCode: string | null;
+    city: string | null;
+    asn: string | null;
+    asnOrg: string | null;
+    approximate: boolean;
+  };
+  attackMappings: Array<{
+    recordId: string;
+    techniqueId: string;
+    name: string;
+    tactic: string;
+    method: string;
+    basis: string;
+    inference: boolean;
+  }>;
+  campaignMembership: {
+    recordId: string;
+    label: string;
+    snapshot: "current";
+    reasons: string[];
+  } | null;
+  derivedArtifacts: {
+    rules: Array<{
+      recordId: string;
+      ruleType: RuleType;
+      requiresReview: boolean;
+      generatedAt: string;
+    }>;
+    reportMentions: Array<{
+      recordId: string;
+      title: string;
+      periodStart: string;
+      periodEnd: string;
+    }>;
+  };
+  limitations: string[];
+}
+
 export interface Campaign {
   id: string;
   label: string;
@@ -98,6 +185,7 @@ export type ReportCadence = "weekly" | "monthly";
 export interface ReportSchedule {
   cadence: ReportCadence;
   schedulerRunning: boolean;
+  schedulerMode: "embedded" | "external" | "disabled";
   providerConfigured: boolean;
   adminAuthRequired: boolean;
   nextRunAt: string | null;

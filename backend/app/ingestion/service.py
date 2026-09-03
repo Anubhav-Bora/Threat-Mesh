@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -188,11 +188,11 @@ class IngestionService:
 
     @staticmethod
     async def _upsert(session: AsyncSession, indicator: NormalizedIOC) -> bool:
+        normalized_key = indicator_key(indicator.ioc_value, indicator.ioc_type, indicator.port)
         existing = await session.scalar(
             select(IOC).where(
                 IOC.ioc_type == indicator.ioc_type,
-                IOC.indicator_key
-                == indicator_key(indicator.ioc_value, indicator.ioc_type, indicator.port),
+                IOC.indicator_key == normalized_key,
                 IOC.source_feed == indicator.source_feed,
             )
         )
@@ -200,9 +200,7 @@ class IngestionService:
             session.add(
                 IOC(
                     ioc_value=indicator.ioc_value,
-                    indicator_key=indicator_key(
-                        indicator.ioc_value, indicator.ioc_type, indicator.port
-                    ),
+                    indicator_key=normalized_key,
                     ioc_type=indicator.ioc_type,
                     port=indicator.port,
                     malware_family=indicator.malware_family,
@@ -210,20 +208,53 @@ class IngestionService:
                     last_seen=indicator.last_seen,
                     source_feed=indicator.source_feed,
                     is_demo=False,
-                    confidence_score=indicator.confidence_hint,
+                    # Feed confidence is retained as source evidence, not presented as
+                    # ThreatMesh's deterministic score before analysis has run.
+                    confidence_score=0.0,
+                    source_confidence_hint=indicator.confidence_hint,
                     raw_json=indicator.raw_json,
                 )
             )
-            return True
-        existing.first_seen = min(_as_utc(existing.first_seen), _as_utc(indicator.first_seen))
-        existing.last_seen = max(_as_utc(existing.last_seen), _as_utc(indicator.last_seen))
-        existing.malware_family = indicator.malware_family or existing.malware_family
-        existing.ioc_type = indicator.ioc_type
-        existing.port = indicator.port
-        existing.is_demo = False
-        existing.raw_json = indicator.raw_json
-        existing.confidence_score = max(existing.confidence_score, indicator.confidence_hint)
-        return False
+            inserted = True
+            score_inputs_changed = True
+        else:
+            effective_last_seen = max(_as_utc(existing.last_seen), _as_utc(indicator.last_seen))
+            effective_family = indicator.malware_family or existing.malware_family
+            score_inputs_changed = (
+                effective_last_seen != _as_utc(existing.last_seen)
+                or effective_family != existing.malware_family
+            )
+            existing.first_seen = min(_as_utc(existing.first_seen), _as_utc(indicator.first_seen))
+            existing.last_seen = effective_last_seen
+            existing.malware_family = effective_family
+            existing.ioc_type = indicator.ioc_type
+            existing.port = indicator.port
+            existing.is_demo = False
+            existing.raw_json = indicator.raw_json
+            existing.source_confidence_hint = indicator.confidence_hint
+            inserted = False
+
+        if score_inputs_changed:
+            # A new source changes corroboration for every observation. A
+            # refreshed source invalidates the group only when a heuristic-v1
+            # input changed; raw payloads, first_seen, and upstream hints are
+            # evidence but are not score inputs.
+            await session.flush()
+            await session.execute(
+                update(IOC)
+                .where(
+                    IOC.is_demo.is_(False),
+                    IOC.ioc_type == indicator.ioc_type,
+                    IOC.indicator_key == normalized_key,
+                )
+                .values(
+                    confidence_score=0.0,
+                    confidence_model_version=None,
+                    confidence_scored_at=None,
+                    confidence_components=None,
+                )
+            )
+        return inserted
 
 
 def _as_utc(value: datetime) -> datetime:

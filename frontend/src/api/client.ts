@@ -13,6 +13,7 @@ import type {
   DetectionRule,
   FeedRun,
   Indicator,
+  IndicatorLineage,
   ReportCadence,
   ReportSchedule,
   SummaryStats,
@@ -95,6 +96,8 @@ const get = (source: Record<string, any>, ...keys: string[]) => {
     if (source[key] !== undefined && source[key] !== null) return source[key];
   return undefined;
 };
+const hasOwn = (source: Record<string, any>, ...keys: string[]) =>
+  keys.some((key) => Object.prototype.hasOwnProperty.call(source, key));
 
 const normalizeReportProvider = (
   value: unknown,
@@ -120,6 +123,16 @@ function normalizeIndicator(raw: any, index: number): Indicator {
   const confidence = safeNumber(
     get(properties, "confidence", "confidence_score"),
     0,
+  );
+  const confidenceModelVersion = get(
+    properties,
+    "confidenceModelVersion",
+    "confidence_model_version",
+  );
+  const hasConfidenceModelVersion = hasOwn(
+    properties,
+    "confidenceModelVersion",
+    "confidence_model_version",
   );
   const techniqueValue = get(
     properties,
@@ -155,6 +168,9 @@ function normalizeIndicator(raw: any, index: number): Indicator {
       "OSINT",
     ),
     confidence,
+    confidenceAvailable: hasConfidenceModelVersion
+      ? Boolean(confidenceModelVersion)
+      : undefined,
     isDemo:
       get(properties, "isDemo", "is_demo") === undefined
         ? undefined
@@ -187,6 +203,214 @@ function normalizeIndicator(raw: any, index: number): Indicator {
       get(properties, "corroboratingFeeds", "corroborating_feeds"),
     ),
     tags: safeArray(tagsValue).map(String),
+  };
+}
+
+function demoIndicatorLineage(indicator: Indicator): IndicatorLineage {
+  const observationRecordId = `observation:${indicator.id}`;
+  return {
+    indicatorId: indicator.id,
+    recordId: `ioc:${indicator.id}`,
+    identity: {
+      value: indicator.value,
+      type: indicator.type,
+      port: null,
+      isDemo: true,
+    },
+    provenance: {
+      selectedSource: indicator.sourceFeed,
+      observations: [
+        {
+          recordId: observationRecordId,
+          sourceFeed: indicator.sourceFeed,
+          firstSeen: indicator.firstSeen,
+          lastSeen: indicator.lastSeen,
+          sourceConfidenceHint: null,
+          isSelected: true,
+        },
+      ],
+      rawPayload: {
+        retained: false,
+        sha256: null,
+        fieldNames: [],
+      },
+    },
+    confidence: {
+      status: "available",
+      total: indicator.confidence,
+      formulaVersion: "synthetic-demo",
+      calculatedAt: null,
+      components: [
+        {
+          key: "synthetic_demo",
+          label: "Synthetic evidence score",
+          score: indicator.confidence,
+          maxScore: 100,
+          evidence:
+            "Precomputed demonstration value; it is not a live intelligence assessment.",
+        },
+      ],
+    },
+    enrichment: {
+      status:
+        indicator.latitude === null || indicator.longitude === null
+          ? "unavailable"
+          : "available",
+      provider: null,
+      method: "synthetic demonstration context",
+      country: indicator.country || null,
+      countryCode: indicator.countryCode || null,
+      city: indicator.city || null,
+      asn: indicator.asn || null,
+      asnOrg: indicator.asnOrg || null,
+      approximate: true,
+    },
+    attackMappings: indicator.techniqueIds.map((techniqueId) => ({
+      recordId: `technique:${techniqueId}`,
+      techniqueId,
+      name: techniqueId,
+      tactic: "Mapped behavior",
+      method: "synthetic demo mapping",
+      basis: `Synthetic ${indicator.malwareFamily} demonstration context`,
+      inference: true,
+    })),
+    campaignMembership: indicator.campaignId
+      ? {
+          recordId: `campaign:${indicator.campaignId}`,
+          label: indicator.campaignId,
+          snapshot: "current",
+          reasons: ["Synthetic demonstration relationship"],
+        }
+      : null,
+    derivedArtifacts: { rules: [], reportMentions: [] },
+    limitations: [
+      "This lineage is generated from the offline synthetic demonstration corpus.",
+    ],
+  };
+}
+
+function normalizeIndicatorLineage(raw: any): IndicatorLineage {
+  const identity = raw?.identity ?? {};
+  const provenance = raw?.provenance ?? {};
+  const rawPayload = get(provenance, "rawPayload", "raw_payload") ?? {};
+  const confidence = raw?.confidence ?? {};
+  const enrichment = raw?.enrichment ?? {};
+  const artifacts = get(raw, "derivedArtifacts", "derived_artifacts") ?? {};
+  const confidenceStatus = safeString(confidence?.status);
+  const enrichmentStatus = safeString(enrichment?.status);
+  const total = get(confidence, "total");
+  return {
+    indicatorId: safeString(get(raw, "indicatorId", "indicator_id")),
+    recordId: safeString(get(raw, "recordId", "record_id")),
+    identity: {
+      value: safeString(identity?.value, "Unknown indicator"),
+      type: safeString(identity?.type, "ip") as Indicator["type"],
+      port: optionalNumber(identity?.port),
+      isDemo: Boolean(get(identity, "isDemo", "is_demo")),
+    },
+    provenance: {
+      selectedSource: safeString(
+        get(provenance, "selectedSource", "selected_source"),
+        "Unknown source",
+      ),
+      observations: safeArray(provenance?.observations).map((item: any) => ({
+        recordId: safeString(get(item, "recordId", "record_id")),
+        sourceFeed: safeString(
+          get(item, "sourceFeed", "source_feed"),
+          "Unknown source",
+        ),
+        firstSeen: safeString(get(item, "firstSeen", "first_seen")),
+        lastSeen: safeString(get(item, "lastSeen", "last_seen")),
+        sourceConfidenceHint: optionalNumber(
+          get(item, "sourceConfidenceHint", "source_confidence_hint"),
+        ),
+        isSelected: Boolean(get(item, "isSelected", "is_selected")),
+      })),
+      rawPayload: {
+        retained: Boolean(rawPayload?.retained),
+        sha256: safeString(rawPayload?.sha256) || null,
+        fieldNames: safeArray(get(rawPayload, "fieldNames", "field_names")).map(
+          String,
+        ),
+      },
+    },
+    confidence: {
+      status: confidenceStatus === "available" ? "available" : "pending",
+      total:
+        total === undefined || total === null ? null : safeNumber(total, 0),
+      formulaVersion:
+        safeString(get(confidence, "formulaVersion", "formula_version")) ||
+        null,
+      calculatedAt:
+        safeString(get(confidence, "calculatedAt", "calculated_at")) || null,
+      components: safeArray(confidence?.components).map((item: any) => ({
+        key: safeString(item?.key),
+        label: safeString(item?.label, "Evidence component"),
+        score: safeNumber(item?.score),
+        maxScore: safeNumber(get(item, "maxScore", "max_score")),
+        evidence: safeString(item?.evidence),
+      })),
+    },
+    enrichment: {
+      status: ["available", "not_applicable", "unavailable"].includes(
+        enrichmentStatus,
+      )
+        ? (enrichmentStatus as IndicatorLineage["enrichment"]["status"])
+        : "unavailable",
+      provider: safeString(enrichment?.provider) || null,
+      method: safeString(enrichment?.method, "No enrichment method recorded"),
+      country: safeString(enrichment?.country) || null,
+      countryCode:
+        safeString(get(enrichment, "countryCode", "country_code")) || null,
+      city: safeString(enrichment?.city) || null,
+      asn: safeString(enrichment?.asn) || null,
+      asnOrg: safeString(get(enrichment, "asnOrg", "asn_org")) || null,
+      approximate: Boolean(enrichment?.approximate),
+    },
+    attackMappings: safeArray(
+      get(raw, "attackMappings", "attack_mappings"),
+    ).map((item: any) => ({
+      recordId: safeString(get(item, "recordId", "record_id")),
+      techniqueId: safeString(get(item, "techniqueId", "technique_id")),
+      name: safeString(item?.name, "Unknown technique"),
+      tactic: safeString(item?.tactic, "Other"),
+      method: safeString(item?.method, "Unspecified mapping"),
+      basis: safeString(item?.basis, "No mapping basis supplied"),
+      inference: Boolean(item?.inference),
+    })),
+    campaignMembership:
+      raw?.campaign_membership || raw?.campaignMembership
+        ? (() => {
+            const campaign =
+              get(raw, "campaignMembership", "campaign_membership") ?? {};
+            return {
+              recordId: safeString(get(campaign, "recordId", "record_id")),
+              label: safeString(campaign?.label, "Unlabelled campaign"),
+              snapshot: "current" as const,
+              reasons: safeArray(campaign?.reasons).map(String),
+            };
+          })()
+        : null,
+    derivedArtifacts: {
+      rules: safeArray(artifacts?.rules).map((item: any) => ({
+        recordId: safeString(get(item, "recordId", "record_id")),
+        ruleType: safeString(
+          get(item, "ruleType", "rule_type"),
+          "sigma",
+        ) as IndicatorLineage["derivedArtifacts"]["rules"][number]["ruleType"],
+        requiresReview: Boolean(get(item, "requiresReview", "requires_review")),
+        generatedAt: safeString(get(item, "generatedAt", "generated_at")),
+      })),
+      reportMentions: safeArray(
+        get(artifacts, "reportMentions", "report_mentions"),
+      ).map((item: any) => ({
+        recordId: safeString(get(item, "recordId", "record_id")),
+        title: safeString(item?.title, "Threat report"),
+        periodStart: safeString(get(item, "periodStart", "period_start")),
+        periodEnd: safeString(get(item, "periodEnd", "period_end")),
+      })),
+    },
+    limitations: safeArray(raw?.limitations).map(String),
   };
 }
 
@@ -439,11 +663,20 @@ function normalizeReport(raw: any, index: number): ThreatReport {
 function normalizeReportSchedule(raw: any): ReportSchedule {
   const cadence = safeString(get(raw, "cadence"), "weekly").toLowerCase();
   const nextRunAt = safeString(get(raw, "nextRunAt", "next_run_at"));
+  const schedulerRunning = Boolean(
+    get(raw, "schedulerRunning", "scheduler_running"),
+  );
+  const schedulerMode = safeString(
+    get(raw, "schedulerMode", "scheduler_mode"),
+    schedulerRunning ? "embedded" : "disabled",
+  ).toLowerCase();
   return {
     cadence: cadence === "monthly" ? "monthly" : "weekly",
-    schedulerRunning: Boolean(
-      get(raw, "schedulerRunning", "scheduler_running"),
-    ),
+    schedulerRunning,
+    schedulerMode:
+      schedulerMode === "embedded" || schedulerMode === "external"
+        ? schedulerMode
+        : "disabled",
     providerConfigured: Boolean(
       get(raw, "providerConfigured", "provider_configured"),
     ),
@@ -696,6 +929,17 @@ export const threatApi = {
           0,
         ),
     ),
+  indicatorLineage: (id: string) => {
+    const demoIndicator = demoIndicators.find((item) => item.id === id);
+    return withFallback<IndicatorLineage | null>(
+      `indicator-lineage-${id}`,
+      demoIndicator ? demoIndicatorLineage(demoIndicator) : null,
+      async () =>
+        normalizeIndicatorLineage(
+          await request<any>(`/iocs/${encodeURIComponent(id)}/lineage`),
+        ),
+    );
+  },
   campaigns: () =>
     withFallback("campaigns", demoCampaigns, async () =>
       listPayload(await request<any>("/campaigns")).map(normalizeCampaign),
@@ -755,6 +999,7 @@ export const threatApi = {
         data: {
           cadence: "weekly",
           schedulerRunning: false,
+          schedulerMode: "disabled",
           providerConfigured: false,
           adminAuthRequired: false,
           nextRunAt: null,

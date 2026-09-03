@@ -31,6 +31,15 @@ export const useIndicator = (id?: string) =>
     enabled: Boolean(id),
     ...options,
   });
+export const useIndicatorLineage = (id?: string) =>
+  useQuery({
+    queryKey: ["indicator-lineage", id],
+    queryFn: () => threatApi.indicatorLineage(id!),
+    enabled: Boolean(id),
+    staleTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 export const useCampaigns = () =>
   useQuery({
     queryKey: ["campaigns"],

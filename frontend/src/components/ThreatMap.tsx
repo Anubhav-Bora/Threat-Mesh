@@ -103,7 +103,9 @@ export function ThreatMap({
       (item) =>
         item.latitude !== null &&
         item.longitude !== null &&
-        item.confidence >= filters.minConfidence &&
+        (filters.minConfidence <= 0 ||
+          (item.confidenceAvailable !== false &&
+            item.confidence >= filters.minConfidence)) &&
         (filters.malwareFamily === "all" ||
           item.malwareFamily === filters.malwareFamily) &&
         (filters.country === "all" || item.country === filters.country) &&
@@ -114,8 +116,10 @@ export function ThreatMap({
 
   const familyLegend = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const item of fallbackIndicators)
+    for (const item of fallbackIndicators) {
+      if (item.confidenceAvailable === false) continue;
       counts.set(item.malwareFamily, (counts.get(item.malwareFamily) ?? 0) + 1);
+    }
     const families = Array.from(counts, ([family, count]) => ({
       family,
       count,
@@ -125,6 +129,16 @@ export function ThreatMap({
       remaining: Math.max(0, families.length - 3),
     };
   }, [fallbackIndicators]);
+
+  const fallbackDisplayIndicators = useMemo(
+    () =>
+      mode === "heatmap"
+        ? fallbackIndicators.filter(
+            (item) => item.confidenceAvailable !== false,
+          )
+        : fallbackIndicators,
+    [fallbackIndicators, mode],
+  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -213,33 +227,37 @@ export function ThreatMap({
                 Number.isFinite(item.latitude) &&
                 Number.isFinite(item.longitude),
             )
-            .map(
-              (item) =>
-                new Graphic({
-                  geometry: new Point({
-                    longitude: item.longitude,
-                    latitude: item.latitude,
-                    spatialReference: { wkid: 4326 },
-                  }),
-                  attributes: {
-                    object_id: nextObjectId++,
-                    ioc_id: item.id,
-                    value: item.value,
-                    family: item.malwareFamily,
-                    family_color: String(
-                      threatFamilyColorIndex(item.malwareFamily),
-                    ),
-                    confidence: item.confidence,
-                    country: item.country,
-                    source: item.sourceFeed,
-                    provenance: item.isDemo
-                      ? "Synthetic demo"
-                      : "Live-feed observation",
-                    last_seen: new Date(item.lastSeen).getTime(),
-                    type: item.type,
-                  },
+            .map((item) => {
+              const confidenceAvailable = item.confidenceAvailable !== false;
+              return new Graphic({
+                geometry: new Point({
+                  longitude: item.longitude,
+                  latitude: item.latitude,
+                  spatialReference: { wkid: 4326 },
                 }),
-            );
+                attributes: {
+                  object_id: nextObjectId++,
+                  ioc_id: item.id,
+                  value: item.value,
+                  family: item.malwareFamily,
+                  family_color: confidenceAvailable
+                    ? String(threatFamilyColorIndex(item.malwareFamily))
+                    : "pending",
+                  confidence: confidenceAvailable ? item.confidence : null,
+                  confidence_status: confidenceAvailable ? "Scored" : "Pending",
+                  confidence_label: confidenceAvailable
+                    ? `${item.confidence}%`
+                    : "Analysis pending",
+                  country: item.country,
+                  source: item.sourceFeed,
+                  provenance: item.isDemo
+                    ? "Synthetic demo"
+                    : "Live-feed observation",
+                  last_seen: new Date(item.lastSeen).getTime(),
+                  type: item.type,
+                },
+              });
+            });
         createGraphicsRef.current = createGraphics;
         const createDeleteGraphics = (objectIds: Array<number | string>) =>
           objectIds.map(
@@ -303,7 +321,15 @@ export function ThreatMap({
                 outline: { color: [248, 250, 252, 0.88], width: 1 },
                 size: 9,
               }),
-            })),
+            })).concat({
+              value: "pending",
+              label: "Confidence analysis pending",
+              symbol: new SimpleMarkerSymbol({
+                color: "#94a3b8",
+                outline: { color: [241, 245, 249, 0.86], width: 1 },
+                size: 9,
+              }),
+            }),
             visualVariables: [
               {
                 type: "opacity",
@@ -367,6 +393,16 @@ export function ThreatMap({
               type: "string",
             },
             { name: "confidence", alias: "Confidence", type: "double" },
+            {
+              name: "confidence_status",
+              alias: "Confidence status",
+              type: "string",
+            },
+            {
+              name: "confidence_label",
+              alias: "Confidence",
+              type: "string",
+            },
             { name: "country", alias: "Country", type: "string" },
             { name: "source", alias: "Source", type: "string" },
             { name: "provenance", alias: "Provenance", type: "string" },
@@ -384,7 +420,11 @@ export function ThreatMap({
                 type: "fields",
                 fieldInfos: [
                   { fieldName: "value", label: "Indicator" },
-                  { fieldName: "confidence", label: "Confidence" },
+                  { fieldName: "confidence_label", label: "Confidence" },
+                  {
+                    fieldName: "confidence_status",
+                    label: "Analysis status",
+                  },
                   { fieldName: "country", label: "Approximate location" },
                   { fieldName: "source", label: "Source feed" },
                   { fieldName: "provenance", label: "Provenance" },
@@ -741,7 +781,15 @@ export function ThreatMap({
     const view = viewRef.current;
     if (!layer || !view) return;
     const quote = (value: string) => value.replaceAll("'", "''");
-    const clauses = [`confidence >= ${filters.minConfidence}`];
+    const clauses =
+      filters.minConfidence > 0
+        ? [
+            `confidence_status = 'Scored'`,
+            `confidence >= ${filters.minConfidence}`,
+          ]
+        : mode === "heatmap"
+          ? [`confidence_status = 'Scored'`, "confidence IS NOT NULL"]
+          : ["1=1"];
     if (filters.malwareFamily !== "all")
       clauses.push(`family = '${quote(filters.malwareFamily)}'`);
     if (filters.country !== "all")
@@ -753,7 +801,7 @@ export function ThreatMap({
     view.timeExtent = Number.isFinite(days)
       ? { start: new Date(Date.now() - days * 86_400_000), end: new Date() }
       : null;
-  }, [filters, mapState]);
+  }, [filters, mapState, mode]);
 
   const adjustZoom = (delta: number) => {
     if (mapState === "fallback") {
@@ -834,7 +882,7 @@ export function ThreatMap({
         <div className="map-fallback">
           <ArcGisRasterMap
             ref={rasterMapRef}
-            indicators={fallbackIndicators}
+            indicators={fallbackDisplayIndicators}
             mode={mode}
             onSelect={(indicator) => onSelectRef.current(indicator)}
           />
@@ -929,7 +977,7 @@ export function ThreatMap({
             ? "Ring = approximate location context"
             : mode === "heatmap"
               ? "Brighter areas = more observations"
-              : "Color = family · opacity = confidence"}
+              : "Color = family · opacity = scored confidence · gray = pending"}
         </span>
       </div>
       {mapState === "fallback" && (

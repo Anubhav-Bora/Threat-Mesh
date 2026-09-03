@@ -394,11 +394,13 @@ export const ArcGisRasterMap = forwardRef<
           ({ key, item, left, top, precisionRadius, members }) => {
             const isCluster = members.length > 1;
             const confidence =
-              item.confidence >= 70
-                ? "high"
-                : item.confidence >= 40
-                  ? "medium"
-                  : "low";
+              item.confidenceAvailable === false
+                ? "pending"
+                : item.confidence >= 70
+                  ? "high"
+                  : item.confidence >= 40
+                    ? "medium"
+                    : "low";
             return (
               <button
                 key={key}
@@ -408,18 +410,25 @@ export const ArcGisRasterMap = forwardRef<
                   {
                     left,
                     top,
-                    "--marker-color": threatFamilyColor(item.malwareFamily),
+                    "--marker-color":
+                      item.confidenceAvailable === false
+                        ? "#94a3b8"
+                        : threatFamilyColor(item.malwareFamily),
                   } as CSSProperties
                 }
                 aria-label={
                   isCluster
                     ? `Zoom into cluster of ${members.length} indicators`
-                    : `Open ${item.value}, ${item.confidence}% confidence`
+                    : item.confidenceAvailable === false
+                      ? `Open ${item.value}, confidence analysis pending`
+                      : `Open ${item.value}, ${item.confidence}% confidence`
                 }
                 title={
                   isCluster
                     ? `${members.length} indicators · zoom in`
-                    : `${item.malwareFamily} · ${item.confidence}% confidence`
+                    : item.confidenceAvailable === false
+                      ? `${item.malwareFamily} · analysis pending`
+                      : `${item.malwareFamily} · ${item.confidence}% confidence`
                 }
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => {

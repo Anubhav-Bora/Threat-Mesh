@@ -15,9 +15,11 @@ from app.api.schemas import (
     GeoJSONPoint,
     IOCDetail,
     IOCFeature,
+    IOCLineageResponse,
     IOCProperties,
 )
 from app.errors import AppError
+from app.evidence import build_ioc_lineage
 from app.models import IOC, IOCType
 from app.models.entities import GeographyPoint
 
@@ -151,6 +153,14 @@ async def get_ioc(ioc_id: int, session: SessionDep) -> IOCDetail:
             "corroborating_sources": sources,
         }
     )
+
+
+@router.get("/{ioc_id}/lineage", response_model=IOCLineageResponse)
+async def get_ioc_lineage(ioc_id: int, session: SessionDep) -> IOCLineageResponse:
+    ioc = await session.get(IOC, ioc_id)
+    if ioc is None:
+        raise AppError(404, "ioc_not_found", f"IOC {ioc_id} was not found")
+    return IOCLineageResponse.model_validate(await build_ioc_lineage(session, ioc))
 
 
 async def _page_provenance(

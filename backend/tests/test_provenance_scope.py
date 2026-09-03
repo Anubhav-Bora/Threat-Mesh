@@ -208,7 +208,8 @@ async def test_mixed_report_qa_stats_and_api_use_live_scope(client, app) -> None
     assert facts["period_corpus_mode"] == "mixed"
     assert facts["total_observations"] == 1
     assert facts["unique_indicator_count"] == 1
-    assert facts["sample_high_confidence_observations"][0]["is_demo"] is False
+    assert facts["sample_high_confidence_observations"] == []
+    assert facts["top_malware_families_by_observation"] == [["LiveFamily", 1]]
     assert [campaign["label"] for campaign in facts["notable_campaigns"]] == ["Live lead"]
 
     provider = StaticProvider("Grounded live-only response.")

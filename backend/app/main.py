@@ -117,9 +117,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "ready",
             "database": "ok",
-            "scheduler": "running"
-            if resolved.scheduler_enabled and request.app.state.scheduler_manager.scheduler.running
-            else "disabled",
+            "scheduler": (
+                "running"
+                if resolved.scheduler_enabled
+                and request.app.state.scheduler_manager.scheduler.running
+                else "external"
+                if resolved.external_scheduler_enabled
+                else "disabled"
+            ),
             "ai": {"provider": ai_provider, "configured": ai_configured},
         }
 

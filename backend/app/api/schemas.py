@@ -25,6 +25,8 @@ class IOCProperties(ORMModel):
     corroborating_feeds: int = 1
     corroborating_sources: list[str] = Field(default_factory=list)
     confidence_score: float
+    confidence_model_version: str | None
+    confidence_scored_at: datetime | None
     country: str | None
     country_code: str | None
     city: str | None
@@ -64,9 +66,113 @@ class GeoJSONFeatureCollection(BaseModel):
 class IOCDetail(IOCProperties):
     latitude: float | None
     longitude: float | None
-    raw_json: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+
+class LineageIdentity(BaseModel):
+    value: str
+    type: IOCType
+    port: int | None
+    is_demo: bool
+
+
+class ProvenanceObservation(BaseModel):
+    record_id: str
+    source_feed: str
+    first_seen: datetime
+    last_seen: datetime
+    source_confidence_hint: float | None
+    is_selected: bool
+
+
+class RawPayloadEvidence(BaseModel):
+    retained: bool
+    sha256: str | None
+    field_names: list[str] = Field(default_factory=list)
+
+
+class ProvenanceEvidence(BaseModel):
+    selected_source: str
+    observations: list[ProvenanceObservation]
+    raw_payload: RawPayloadEvidence
+
+
+class ConfidenceComponentEvidence(BaseModel):
+    key: str
+    label: str
+    score: float
+    max_score: float
+    evidence: str
+
+
+class ConfidenceEvidence(BaseModel):
+    status: Literal["available", "pending"]
+    total: float
+    formula_version: str | None
+    calculated_at: datetime | None
+    components: list[ConfidenceComponentEvidence] = Field(default_factory=list)
+
+
+class EnrichmentEvidence(BaseModel):
+    status: Literal["available", "not_applicable", "unavailable"]
+    provider: str | None
+    method: str
+    country: str | None
+    country_code: str | None
+    city: str | None
+    asn: str | None
+    asn_org: str | None
+    approximate: bool
+
+
+class AttackMappingEvidence(BaseModel):
+    record_id: str
+    technique_id: str
+    name: str
+    tactic: str
+    method: str
+    basis: str | None
+    inference: bool = True
+
+
+class CampaignMembershipEvidence(BaseModel):
+    record_id: str
+    label: str
+    snapshot: Literal["current"] = "current"
+    reasons: list[str] = Field(default_factory=list)
+
+
+class DerivedRuleEvidence(BaseModel):
+    record_id: str
+    rule_type: RuleType
+    requires_review: bool
+    generated_at: datetime
+
+
+class ReportMentionEvidence(BaseModel):
+    record_id: str
+    title: str
+    period_start: datetime
+    period_end: datetime
+
+
+class DerivedArtifactsEvidence(BaseModel):
+    rules: list[DerivedRuleEvidence] = Field(default_factory=list)
+    report_mentions: list[ReportMentionEvidence] = Field(default_factory=list)
+
+
+class IOCLineageResponse(BaseModel):
+    indicator_id: int
+    record_id: str
+    identity: LineageIdentity
+    provenance: ProvenanceEvidence
+    confidence: ConfidenceEvidence
+    enrichment: EnrichmentEvidence
+    attack_mappings: list[AttackMappingEvidence] = Field(default_factory=list)
+    campaign_membership: CampaignMembershipEvidence | None
+    derived_artifacts: DerivedArtifactsEvidence
+    limitations: list[str]
 
 
 class CampaignSummary(ORMModel):
@@ -172,6 +278,7 @@ class UpdateReportScheduleRequest(BaseModel):
 class ReportScheduleResponse(BaseModel):
     cadence: ReportCadence
     scheduler_running: bool
+    scheduler_mode: Literal["embedded", "external", "disabled"]
     provider_configured: bool
     next_run_at: datetime | None
     timezone: Literal["UTC"] = "UTC"

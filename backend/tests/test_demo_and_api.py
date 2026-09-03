@@ -173,6 +173,7 @@ async def test_dashboard_api_contract(client, app, settings) -> None:
     assert detail["corroborating_feeds"] == 2
     assert detail["corroborating_sources"] == ["feodo", "threatfox"]
     assert detail["is_demo"] is True
+    assert "raw_json" not in detail
 
     stats = (await client.get("/api/v1/stats/summary")).json()
     assert stats["total_iocs"] == len(DEMO_IOCS)
@@ -256,6 +257,20 @@ async def test_admin_and_validation_errors_are_structured(client) -> None:
     invalid = await client.get("/api/v1/iocs", params={"confidence_min": 101})
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/feeds/sync", "/api/v1/enrichment/run", "/api/v1/analysis/run"],
+)
+async def test_external_coordinator_owns_pipeline_mutations(client, app, path) -> None:
+    app.state.settings.external_scheduler_enabled = True
+
+    response = await client.post(path, headers={"X-API-Key": "test-admin-key"})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "pipeline_externally_managed"
 
 
 @pytest.mark.asyncio
@@ -635,7 +650,8 @@ async def test_weekly_report_facts_are_exact_with_bounded_samples(app) -> None:
     assert facts["total_observations"] == 41
     assert facts["unique_indicator_count"] == 40
     assert facts["high_confidence_observations"] == 21
-    assert len(facts["sample_high_confidence_observations"]) == 25
+    assert len(facts["sample_high_confidence_observations"]) == 21
+    assert all(item["confidence"] >= 70 for item in facts["sample_high_confidence_observations"])
     assert facts["top_malware_families_by_observation"][0] == ["Emotet", 31]
     assert facts["top_observed_host_countries_by_observation"][0] == ["Germany", 26]
     assert facts["top_asns_by_observation"][0] == ["AS64500", 36]
