@@ -29,10 +29,10 @@ change confidence, technique mapping, clustering, or response decisions.
 | Geospatial context | Cached backend-only IP/ASN enrichment, PostGIS geography points, clustering, heatmap, and illustrative geodesic uncertainty views |
 | Intelligence analysis | Versioned confidence snapshots with per-signal evidence, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
 | Detection engineering | Stable Sigma and Suricata templates with provenance and mandatory human-review labeling |
-| Analyst reporting | Evidence-bounded weekly or monthly CTI reports with a persisted runtime schedule and configurable Gemini, local Ollama, or no-LLM operation |
+| Analyst reporting | On-demand, evidence-bounded weekly CTI reports with configurable Gemini, local Ollama, or no-LLM operation |
 | Natural-language access | Retrieval-first assistant with server-validated evidence IDs, forged-citation rejection, and exact record pivots instead of unrestricted text-to-SQL |
 | Operations | Embedded or external scheduled jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
-| Portfolio UX | Responsive React/TypeScript console with overview, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |
+| Portfolio UX | Responsive React/TypeScript console with overview, bulk investigation, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |
 
 ## Architecture
 
@@ -56,14 +56,24 @@ The detailed [architecture](docs/architecture.md),
 [architecture decisions](docs/decisions/) describe trust boundaries and the
 trade-offs behind the design.
 
-The included deployment templates support a scale-to-zero portfolio layout:
-Firebase Hosting, a Cloud Run API and coordinator job, Cloud Scheduler, Secret
-Manager, and an external PostgreSQL/PostGIS database.
+The included deployment templates support a full stack Vercel layout:
+Vercel-hosted frontend (`frontend/`) and Vercel-hosted FastAPI backend (`backend/`)
+connected to an external PostgreSQL/PostGIS database.
+
+For Vercel, deploy both layers separately:
+
+- `frontend/` as a Vite static project.
+- `backend/` as a Python serverless function project using `backend/vercel.json`.
+
+Set `SCHEDULER_ENABLED=false` in backend deployment settings so no built-in cron
+runs in the Vercel-linked deployment path, and trigger weekly drafts from the UI
+button instead.
 
 ## Quick start
 
-Requirements: Docker Desktop (or Docker Engine with Compose) and about 4 GB of
+Requirements for local development: Docker Desktop (or Docker Engine with Compose) and about 4 GB of
 free memory. No account or API key is needed for the seeded demo.
+Docker is not required for Vercel-only deployment.
 
 ```powershell
 Copy-Item .env.example .env
@@ -138,11 +148,69 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 $env:DATABASE_URL = "sqlite+aiosqlite:///./threatmesh-dev.sqlite3"
 $env:SCHEDULER_ENABLED = "false"
+$env:DATA_RETENTION_DAYS = "30"
 uvicorn app.main:app --reload
 ```
 
 SQLite is a convenience path for tests and API development. Use the Compose
 PostGIS service to exercise geography indexes and production migrations.
+
+### Frontend deployment on Vercel
+
+From `frontend/`, a Vercel-friendly workflow is:
+
+```powershell
+cd frontend
+Copy-Item .env.example .env.production
+npm ci
+npm run build
+```
+
+Then create a Vercel project with:
+
+- Framework preset: **Vite**
+- Install command: `npm ci`
+- Build command: `npm run build`
+- Output directory: `dist`
+
+Set `VITE_API_BASE_URL` to your backend origin plus `/api/v1`
+(for example, `https://api.example.com/api/v1`) so report generation and all
+other API calls reach the backend.
+
+### Backend deployment on Vercel
+
+From `backend/`, create a Vercel project and deploy with:
+
+```powershell
+cd backend
+vercel
+```
+
+Use these required runtime values:
+
+```text
+DATABASE_URL=postgresql+asyncpg://...
+TRUSTED_HOSTS=<frontend>.vercel.app,.vercel.app
+CORS_ORIGINS=https://<frontend>.vercel.app
+SCHEDULER_ENABLED=false
+EXTERNAL_SCHEDULER_ENABLED=false
+AUTO_CREATE_SCHEMA=false
+DATA_RETENTION_DAYS=30
+```
+
+`backend/vercel.json` already routes all requests to `api/index.py`, so the backend
+serves `/api/v1/...` and report generation remains manual (`POST /api/v1/reports/generate`).
+
+You can also deploy both layers in a single command from repository root using the newly added root `vercel.json`:
+
+```powershell
+vercel
+```
+
+In that mode, Vercel uses the root SPA + function pipeline:
+
+- Frontend built from `frontend/package.json` with output `frontend/dist`
+- Backend function served at `/api/*` from `backend/api/index.py`
 
 ### Frontend
 

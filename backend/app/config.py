@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     analysis_interval_hours: int = Field(default=6, gt=0)
     report_day_of_week: str = "mon"
     report_hour_utc: int = Field(default=6, ge=0, le=23)
+    data_retention_days: int = Field(default=30, gt=0)
 
     http_timeout_seconds: float = Field(default=30.0, gt=0)
     feed_max_response_bytes: int = Field(default=8_388_608, gt=0)

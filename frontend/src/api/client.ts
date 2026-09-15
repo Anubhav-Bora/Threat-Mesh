@@ -14,9 +14,11 @@ import type {
   FeedRun,
   Indicator,
   IndicatorLineage,
+  InvestigationResult,
   ReportCadence,
   ReportSchedule,
   SummaryStats,
+  StixBundle,
   ThreatReport,
 } from "../types";
 
@@ -28,6 +30,13 @@ export interface ApiResult<T> {
   total?: number;
   limit?: number;
   offset?: number;
+}
+
+export type FeedSlug = "urlhaus" | "threatfox" | "feodo";
+
+export interface OperationResponse {
+  status: string;
+  details: Record<string, any>;
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(
@@ -787,7 +796,15 @@ async function request<T>(
       signal: controller.signal,
     });
     if (response.ok) hasLiveResponse = true;
-    if (!response.ok) throw new ApiRequestError(response.status);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const message =
+        safeString(payload?.error?.message) ||
+        safeString(payload?.detail) ||
+        safeString(payload?.message) ||
+        `API request failed (${response.status})`;
+      throw new ApiRequestError(response.status, message);
+    }
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   } finally {
@@ -917,6 +934,25 @@ const parseSummary = (payload: any): SummaryStats => {
   };
 };
 
+async function runAdminOperation(
+  path: string,
+  adminApiKey: string,
+  timeoutMs = 295_000,
+): Promise<OperationResponse> {
+  const key = adminApiKey.trim();
+  if (!key) {
+    throw new ApiRequestError(401, "Administrator key is required");
+  }
+  return request<OperationResponse>(
+    path,
+    {
+      method: "POST",
+      headers: { "X-API-Key": key },
+    },
+    timeoutMs,
+  );
+}
+
 export const threatApi = {
   indicators: loadIndicators,
   indicator: (id: string) =>
@@ -993,6 +1029,27 @@ export const threatApi = {
           0,
         ),
     ),
+  generateWeeklyReport: async (): Promise<ApiResult<ThreatReport>> => {
+    if (FORCE_DEMO) {
+      throw new ApiRequestError(
+        409,
+        "Automatic reporting is unavailable in demo mode",
+      );
+    }
+      return {
+      data: normalizeReport(
+        await request<any>(
+          "/reports/generate",
+          {
+            method: "POST",
+          },
+          295_000,
+        ),
+        0,
+      ),
+      mode: "live",
+    };
+  },
   reportSchedule: async (): Promise<ApiResult<ReportSchedule>> => {
     if (FORCE_DEMO) {
       return {
@@ -1043,6 +1100,56 @@ export const threatApi = {
     withFallback("rules", demoRules, async () =>
       listPayload(await request<any>("/rules")).map(normalizeRule),
     ),
+  investigateIocs: async (values: string[]): Promise<InvestigationResult> => {
+    const raw = await request<any>("/iocs/investigate", {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+    return {
+      queried: safeNumber(raw?.queried),
+      matched: safeNumber(raw?.matched),
+      matches: Array.isArray(raw?.matches)
+          ? raw.matches.map((item: any, index: number) => ({
+            query: safeString(item?.query),
+            normalizedQuery: safeString(
+              item?.normalized_query,
+              safeString(item?.query),
+            ),
+            indicator: normalizeIndicator(item?.indicator, index),
+            blocklistEligible: item?.blocklist_eligible !== false,
+            warnings: Array.isArray(item?.warnings)
+              ? item.warnings
+                  .map((value: unknown) => safeString(value))
+                  .filter(Boolean)
+              : [],
+          }))
+        : [],
+      unmatched: Array.isArray(raw?.unmatched)
+        ? raw.unmatched
+            .map((value: unknown) => safeString(value))
+            .filter(Boolean)
+        : [],
+      invalid: Array.isArray(raw?.invalid)
+        ? raw.invalid
+            .map((value: unknown) => safeString(value))
+            .filter(Boolean)
+        : [],
+    };
+  },
+  exportStixIocs: (values: string[]) =>
+    request<StixBundle>("/iocs/export/stix", {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    }),
+  syncFeed: (feed: FeedSlug, adminApiKey: string) =>
+    runAdminOperation(
+      `/feeds/sync?feed=${encodeURIComponent(feed)}`,
+      adminApiKey,
+    ),
+  runEnrichment: (adminApiKey: string) =>
+    runAdminOperation("/enrichment/run", adminApiKey),
+  runAnalysis: (adminApiKey: string) =>
+    runAdminOperation("/analysis/run", adminApiKey),
   feedStatus: () =>
     withFallback<FeedRun[]>("feed-status", [], async () =>
       listPayload(await request<any>("/feeds/status")).map(normalizeFeedRun),

@@ -206,6 +206,51 @@ async def test_dashboard_api_contract(client, app, settings) -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_investigation_and_stix_export(client, app) -> None:
+    async with app.state.database.session_factory() as session:
+        session.add(make_ioc(value="8.8.8.8", source="threatfox", confidence_score=91))
+        session.add(make_ioc(value="8.8.8.8", source="feodo", confidence_score=88))
+        await session.commit()
+
+    request = {"values": ["8.8.8.8", "203.0.113.99", "not a valid domain!"]}
+    response = await client.post("/api/v1/iocs/investigate", json=request)
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["queried"], body["matched"]) == (3, 1)
+    assert body["unmatched"] == ["203.0.113.99"]
+    assert body["invalid"] == ["not a valid domain!"]
+    assert body["matches"][0]["indicator"]["corroborating_sources"] == ["feodo", "threatfox"]
+
+    export = await client.post("/api/v1/iocs/export/stix", json=request)
+    assert export.status_code == 200
+    bundle = export.json()
+    assert bundle["type"] == "bundle"
+    assert len(bundle["objects"]) == 1
+    assert bundle["objects"][0]["pattern"] == "[ipv4-addr:value = '8.8.8.8']"
+    assert bundle["objects"][0]["labels"][0] == "tlp:clear"
+
+
+@pytest.mark.asyncio
+async def test_investigation_refangs_observables_and_guards_blocklists(client, app) -> None:
+    async with app.state.database.session_factory() as session:
+        session.add(make_ioc(value="10.0.0.8", source="threatfox", confidence_score=80))
+        session.add(make_ioc(value="8.8.8.8", source="feodo", confidence_score=85))
+        await session.commit()
+
+    response = await client.post(
+        "/api/v1/iocs/investigate",
+        json={"values": ["10[.]0[.]0[.]8", "8[.]8[.]8[.]8"]},
+    )
+
+    assert response.status_code == 200
+    matches = {item["normalized_query"]: item for item in response.json()["matches"]}
+    assert matches["10.0.0.8"]["blocklist_eligible"] is False
+    assert matches["10.0.0.8"]["warnings"]
+    assert matches["8.8.8.8"]["blocklist_eligible"] is True
+    assert matches["8.8.8.8"]["warnings"] == []
+
+
+@pytest.mark.asyncio
 async def test_summary_corpus_mode_transitions(client, app) -> None:
     empty = (await client.get("/api/v1/stats/summary")).json()
     assert (

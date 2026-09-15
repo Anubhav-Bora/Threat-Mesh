@@ -3483,6 +3483,14 @@ input[type="range"] {
   justify-content: center;
   margin-top: 10px;
 }
+.report-schedule__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.report-schedule__actions .button {
+  flex: 1;
+}
 .report-schedule__policy {
   text-align: center;
 }

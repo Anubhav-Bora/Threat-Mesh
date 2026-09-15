@@ -7,6 +7,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const CampaignsPage = lazy(() => import("./pages/CampaignsPage"));
 const AttackPage = lazy(() => import("./pages/AttackPage"));
 const IndicatorsPage = lazy(() => import("./pages/IndicatorsPage"));
+const InvestigationPage = lazy(() => import("./pages/InvestigationPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const RulesPage = lazy(() => import("./pages/RulesPage"));
 const AssistantPage = lazy(() => import("./pages/AssistantPage"));
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="campaigns" element={<CampaignsPage />} />
           <Route path="attack" element={<AttackPage />} />
           <Route path="indicators" element={<IndicatorsPage />} />
+          <Route path="investigate" element={<InvestigationPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="assistant" element={<AssistantPage />} />

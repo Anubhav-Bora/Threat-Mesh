@@ -142,10 +142,6 @@ export function EmptyState({
   description: string;
   allowSync?: boolean;
 }) {
-  const [showOperatorAction, setShowOperatorAction] = useState(false);
-  const syncCommand = `$env:ADMIN_API_KEY = Read-Host 'Enter the same ADMIN_API_KEY value from .env'
-$headers = @{'X-API-Key' = $env:ADMIN_API_KEY}
-Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/api/v1/feeds/sync' -Headers $headers`;
   return (
     <div className="empty-state">
       <span className="empty-state__icon">
@@ -154,26 +150,13 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/api/v1/feeds/sync' -H
       <h2>{title}</h2>
       <p>{description}</p>
       {allowSync && (
-        <button
+        <a
           className="button button--primary"
-          type="button"
-          onClick={() => setShowOperatorAction((value) => !value)}
+          href="/settings#operations"
         >
           <Terminal size={16} />
-          Sync feeds manually
-        </button>
-      )}
-      {showOperatorAction && (
-        <div className="operator-instruction">
-          <strong>PowerShell command</strong>
-          <code>{syncCommand}</code>
-          <CopyButton text={syncCommand} label="Copy command" />
-          <span>
-            Paste the root <code>ADMIN_API_KEY</code> value at the prompt.
-            PowerShell does not load Compose <code>.env</code> automatically;
-            the key is intentionally never stored in browser code.
-          </span>
-        </div>
+          Open operations center
+        </a>
       )}
     </div>
   );

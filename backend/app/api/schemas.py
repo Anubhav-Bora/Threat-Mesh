@@ -63,6 +63,43 @@ class GeoJSONFeatureCollection(BaseModel):
     offset: int
 
 
+class IOCInvestigationRequest(BaseModel):
+    values: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator("values")
+    @classmethod
+    def normalize_values(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw_value in values:
+            value = " ".join(str(raw_value).strip().split())
+            if not value or value in seen:
+                continue
+            if len(value) > 2048:
+                raise ValueError("each observable must be 2048 characters or fewer")
+            seen.add(value)
+            normalized.append(value)
+        if not normalized:
+            raise ValueError("at least one non-empty observable is required")
+        return normalized
+
+
+class IOCInvestigationMatch(BaseModel):
+    query: str
+    normalized_query: str
+    indicator: IOCProperties
+    blocklist_eligible: bool = True
+    warnings: list[str] = Field(default_factory=list)
+
+
+class IOCInvestigationResponse(BaseModel):
+    queried: int
+    matched: int
+    matches: list[IOCInvestigationMatch]
+    unmatched: list[str]
+    invalid: list[str]
+
+
 class IOCDetail(IOCProperties):
     latitude: float | None
     longitude: float | None

@@ -16,6 +16,7 @@ from app.genai import ReportService, build_provider
 from app.ingestion import IngestionService
 from app.models import ReportCadence, ReportSchedule
 from app.pipeline import PipelineService
+from app.maintenance import DataRetentionService
 from app.report_scheduling import ReportScheduleStore, calendar_report_period
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,10 @@ class SchedulerManager:
 
     async def run_scheduled_report(self, cadence: ReportCadence) -> None:
         try:
+            await DataRetentionService(
+                self.session_factory,
+                self.settings.data_retention_days,
+            ).purge_stale_records(datetime.now(UTC))
             provider = build_provider(self.settings)
         except AppError as exc:
             logger.warning("Scheduled %s report skipped: %s", cadence.value, exc.message)

@@ -8,7 +8,15 @@ from sqlalchemy import func, select
 
 from app.genai.providers import StaticProvider
 from app.genai.reports import ReportService
-from app.models import IOC, Report, ReportCadence, ReportSchedule
+from app.models import (
+    FeedRun,
+    FeedRunStatus,
+    GeoCache,
+    IOC,
+    Report,
+    ReportCadence,
+    ReportSchedule,
+)
 from app.report_scheduling import ReportScheduleStore, calendar_report_period
 from app.scheduler import REPORT_JOB_ID
 from tests.factories import make_ioc
@@ -101,14 +109,77 @@ async def test_report_schedule_rejects_unknown_cadence_and_manual_generation(cli
         json={"cadence": "quarterly"},
         headers={"X-API-Key": "test-admin-key"},
     )
-    manual = await client.post(
-        "/api/v1/reports",
-        json={},
-        headers={"X-API-Key": "test-admin-key"},
-    )
+    manual = await client.post("/api/v1/reports/generate")
 
     assert invalid.status_code == 422
-    assert manual.status_code == 405
+    assert manual.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_manual_weekly_report_generation_and_retention_cleanup(client, app, monkeypatch) -> None:
+    old_ioc = make_ioc(value="192.0.2.1")
+    old_ioc.last_seen = datetime(2026, 8, 1, tzinfo=UTC)
+    old_ioc.first_seen = datetime(2026, 8, 1, tzinfo=UTC)
+    fresh_ioc = make_ioc(value="198.51.100.2")
+    fresh_ioc.last_seen = datetime(2026, 8, 30, tzinfo=UTC)
+    fresh_ioc.first_seen = datetime(2026, 8, 30, tzinfo=UTC)
+    stale_report = Report(
+        period_start=datetime(2026, 8, 1, tzinfo=UTC),
+        period_end=datetime(2026, 8, 8, tzinfo=UTC),
+        title="Stale report",
+        report_text="Outdated",
+        provider="static",
+        model="test",
+        cadence=ReportCadence.WEEKLY,
+        is_demo=False,
+        facts_json={},
+        created_at=datetime(2026, 8, 2, tzinfo=UTC),
+    )
+    stale_feed = FeedRun(
+        feed_name="urlhaus",
+        status=FeedRunStatus.PARTIAL,
+        started_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    stale_cache = GeoCache(
+        ip_address="192.0.2.1",
+        country="DE",
+        country_code="DE",
+        city="Berlin",
+        fetched_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    async with app.state.database.session_factory() as session:
+        session.add_all([old_ioc, fresh_ioc, stale_report, stale_feed, stale_cache])
+        await session.commit()
+
+    app.state.settings.data_retention_days = 1
+    monkeypatch.setattr(
+        "app.api.routes.reports.build_provider",
+        lambda _settings: StaticProvider("Manual report"),
+    )
+
+    class FixedReportTime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001
+            value = cls(2026, 8, 31, 0, tzinfo=UTC)
+            return value if tz is None else value.astimezone(tz)
+
+    monkeypatch.setattr("app.api.routes.reports.datetime", FixedReportTime)
+
+    response = await client.post("/api/v1/reports/generate")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cadence"] == "weekly"
+    assert datetime.fromisoformat(body["period_end"]) - datetime.fromisoformat(
+        body["period_start"]
+    ) == timedelta(days=7)
+    assert body["created_at"] >= body["period_end"]
+
+    async with app.state.database.session_factory() as session:
+        assert await session.scalar(select(func.count(IOC.id))) == 1
+        assert await session.scalar(select(func.count(Report.id))) == 1
+        assert await session.scalar(select(func.count(FeedRun.id))) == 0
+        assert await session.scalar(select(func.count(GeoCache.ip_address))) == 0
 
 
 @pytest.mark.asyncio

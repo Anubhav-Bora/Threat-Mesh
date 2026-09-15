@@ -88,6 +88,39 @@ counted as healthy.
 
 Scheduled jobs are independent and guarded against overlap: feed ingestion every three hours,
 enrichment every 15 minutes, analysis every six hours, and an automatic report at 06:00 UTC.
+For Vercel or other serverless hosting, set `SCHEDULER_ENABLED=false` and run this service
+without built-in cron. In that mode, generate a report manually with `POST /api/v1/reports/generate`.
+The persisted report cadence is still stored as weekly/monthly metadata, but the automatic trigger does
+not run without a scheduler process.
+Data retention is configured by `DATA_RETENTION_DAYS` (default: `30`) and is applied before each report
+generation step.
+
+## Deploy on Vercel
+
+You can deploy this backend as a serverless function from `backend/` directly:
+
+```powershell
+cd backend
+vercel
+```
+
+Keep these environment variables in the Vercel project (or commit-safe project env file):
+
+```text
+DATABASE_URL=postgresql+asyncpg://...
+SCHEDULER_ENABLED=false
+EXTERNAL_SCHEDULER_ENABLED=false
+AUTO_CREATE_SCHEMA=false
+CORS_ORIGINS=https://your-frontend.vercel.app
+TRUSTED_HOSTS=.vercel.app
+ADMIN_API_KEY=...
+```
+
+`AUTO_CREATE_SCHEMA` must be `false` once production schema already exists. You should run migrations
+before first deploy (for example via CI or an admin run) and keep runtime to read-only schema management.
+`TRUSTED_HOSTS` should include your custom domain if set, and `.vercel.app` is a broad fallback for the
+default Vercel app hostname.
+
 The persisted report cadence is selectable at runtime: weekly runs on the configured weekday
 (Monday by default), while monthly runs on the first day of each month. Jobs do not run
 immediately on startup unless `RUN_JOBS_ON_STARTUP=true`.
@@ -104,6 +137,7 @@ views can page live data without synthetic rows occupying the bounded result win
 - `GET /api/v1/rules`, `POST /api/v1/rules/generate`, rule download
 - `GET /api/v1/reports`, Markdown download
 - `GET|PUT /api/v1/reports/schedule` — inspect or securely change weekly/monthly cadence
+- `POST /api/v1/reports/generate` — manually generate a complete weekly report
 - `POST /api/v1/assistant/ask` — constrained retrieval first, prose generation second
 - `POST /api/v1/feeds/sync`, `/enrichment/run`, `/analysis/run`
 
@@ -145,3 +179,4 @@ alembic upgrade head
 ```
 
 The test suite uses SQLite, injected feed/geolocation/LLM doubles, and no network access.
+

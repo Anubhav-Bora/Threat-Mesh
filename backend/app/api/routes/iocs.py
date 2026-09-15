@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import UTC, datetime
-from typing import Literal
+from ipaddress import ip_address
+from typing import Any, Literal
+from urllib.parse import urlsplit
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Query
 from sqlalchemy import and_, func, or_, select
@@ -15,11 +19,15 @@ from app.api.schemas import (
     GeoJSONPoint,
     IOCDetail,
     IOCFeature,
+    IOCInvestigationMatch,
+    IOCInvestigationRequest,
+    IOCInvestigationResponse,
     IOCLineageResponse,
     IOCProperties,
 )
 from app.errors import AppError
 from app.evidence import build_ioc_lineage
+from app.ingestion.base import canonicalize_indicator, indicator_key, infer_ioc_type, split_ip_port
 from app.models import IOC, IOCType
 from app.models.entities import GeographyPoint
 
@@ -128,6 +136,27 @@ async def list_iocs(
     )
 
 
+@router.post("/investigate", response_model=IOCInvestigationResponse)
+async def investigate_iocs(
+    request: IOCInvestigationRequest, session: SessionDep
+) -> IOCInvestigationResponse:
+    return await _investigate(request.values, session)
+
+
+@router.post("/export/stix")
+async def export_iocs_as_stix(
+    request: IOCInvestigationRequest, session: SessionDep
+) -> dict[str, Any]:
+    investigation = await _investigate(request.values, session)
+    objects = [_stix_indicator(match) for match in investigation.matches]
+    identity = "|".join(sorted(item["id"] for item in objects)) or "empty"
+    return {
+        "type": "bundle",
+        "id": f"bundle--{uuid5(NAMESPACE_URL, f'threatmesh:bundle:{identity}')}",
+        "objects": objects,
+    }
+
+
 @router.get("/{ioc_id}", response_model=IOCDetail)
 async def get_ioc(ioc_id: int, session: SessionDep) -> IOCDetail:
     ioc = await session.get(IOC, ioc_id)
@@ -161,6 +190,178 @@ async def get_ioc_lineage(ioc_id: int, session: SessionDep) -> IOCLineageRespons
     if ioc is None:
         raise AppError(404, "ioc_not_found", f"IOC {ioc_id} was not found")
     return IOCLineageResponse.model_validate(await build_ioc_lineage(session, ioc))
+
+
+async def _investigate(values: list[str], session: AsyncSession) -> IOCInvestigationResponse:
+    prepared: list[tuple[str, IOCType, str, int | None, str]] = []
+    invalid: list[str] = []
+    for query in values:
+        try:
+            refanged = _refang_observable(query)
+            ioc_type = infer_ioc_type(refanged)
+            port: int | None = None
+            if ioc_type is IOCType.IP:
+                _, port = split_ip_port(refanged)
+            canonical = canonicalize_indicator(refanged, ioc_type)
+            prepared.append(
+                (query, ioc_type, canonical, port, indicator_key(canonical, ioc_type, port))
+            )
+        except (TypeError, ValueError):
+            invalid.append(query)
+
+    conditions = []
+    for _, ioc_type, canonical, port, key in prepared:
+        if ioc_type is IOCType.IP and port is None:
+            conditions.append(and_(IOC.ioc_type == ioc_type, IOC.ioc_value == canonical))
+        else:
+            conditions.append(and_(IOC.ioc_type == ioc_type, IOC.indicator_key == key))
+    rows = (
+        list(
+            (
+                await session.scalars(
+                    select(IOC)
+                    .where(or_(*conditions))
+                    .order_by(
+                        IOC.is_demo.asc(),
+                        IOC.confidence_score.desc(),
+                        IOC.last_seen.desc(),
+                        IOC.id.desc(),
+                    )
+                )
+            ).all()
+        )
+        if conditions
+        else []
+    )
+
+    matches: list[IOCInvestigationMatch] = []
+    unmatched: list[str] = []
+    for query, ioc_type, canonical, port, key in prepared:
+        candidates = [
+            row
+            for row in rows
+            if row.ioc_type == ioc_type
+            and (
+                row.ioc_value == canonical
+                if ioc_type is IOCType.IP and port is None
+                else row.indicator_key == key
+            )
+        ]
+        if not candidates:
+            unmatched.append(query)
+            continue
+        primary = candidates[0]
+        sources = sorted({row.source_feed for row in candidates})
+        warnings = _blocklist_warnings(ioc_type, canonical)
+        matches.append(
+            IOCInvestigationMatch(
+                query=query,
+                normalized_query=canonical,
+                indicator=IOCProperties.model_validate(primary).model_copy(
+                    update={
+                        "corroborating_feeds": len(sources),
+                        "corroborating_sources": sources,
+                    }
+                ),
+                blocklist_eligible=not warnings,
+                warnings=warnings,
+            )
+        )
+    return IOCInvestigationResponse(
+        queried=len(values),
+        matched=len(matches),
+        matches=matches,
+        unmatched=unmatched,
+        invalid=invalid,
+    )
+
+
+def _stix_indicator(match: IOCInvestigationMatch) -> dict[str, Any]:
+    indicator = match.indicator
+    pattern = _stix_pattern(indicator.ioc_type, indicator.ioc_value)
+    identity = f"{indicator.ioc_type.value}:{indicator.ioc_value}:{indicator.port or ''}"
+    description_parts = [f"Observed by {indicator.source_feed}."]
+    if indicator.malware_family:
+        description_parts.append(f"Associated malware family: {indicator.malware_family}.")
+    if indicator.corroborating_feeds > 1:
+        description_parts.append(
+            f"Corroborated by {indicator.corroborating_feeds} ThreatMesh sources."
+        )
+    created = _stix_timestamp(indicator.first_seen)
+    modified = _stix_timestamp(max(indicator.first_seen, indicator.last_seen))
+    return {
+        "type": "indicator",
+        "spec_version": "2.1",
+        "id": f"indicator--{uuid5(NAMESPACE_URL, f'threatmesh:{identity}')}",
+        "created": created,
+        "modified": modified,
+        "name": f"ThreatMesh {indicator.ioc_type.value} indicator",
+        "description": " ".join(description_parts),
+        "indicator_types": ["malicious-activity"],
+        "pattern": pattern,
+        "pattern_type": "stix",
+        "pattern_version": "2.1",
+        "valid_from": created,
+        "confidence": max(0, min(100, round(indicator.confidence_score))),
+        "labels": ["tlp:clear", f"source:{indicator.source_feed.lower()}"],
+    }
+
+
+def _refang_observable(value: str) -> str:
+    refanged = value.strip()
+    refanged = re.sub(
+        r"^hxxps?",
+        lambda match: "https" if match.group(0).lower() == "hxxps" else "http",
+        refanged,
+        flags=re.IGNORECASE,
+    )
+    for token in ("[.]", "(.)", "{.}"):
+        refanged = refanged.replace(token, ".")
+    return refanged.replace("[:]", ":")
+
+
+def _blocklist_warnings(ioc_type: IOCType, value: str) -> list[str]:
+    if ioc_type is IOCType.IP:
+        address = ip_address(value)
+        if not address.is_global:
+            return [
+                "Non-global IP address; excluded from the plain blocklist to avoid local or reserved traffic disruption."
+            ]
+        return []
+    hostname = value if ioc_type is IOCType.DOMAIN else urlsplit(value).hostname
+    if hostname:
+        normalized = hostname.rstrip(".").lower()
+        reserved_suffixes = (
+            "localhost",
+            ".local",
+            ".internal",
+            ".invalid",
+            ".test",
+            ".example",
+        )
+        if "." not in normalized or normalized.endswith(reserved_suffixes):
+            return [
+                "Local or reserved hostname; excluded from the plain blocklist to reduce false positives."
+            ]
+    return []
+
+
+def _stix_pattern(ioc_type: IOCType, value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+    if ioc_type is IOCType.IP:
+        object_type = "ipv4-addr" if ip_address(value).version == 4 else "ipv6-addr"
+        return f"[{object_type}:value = '{escaped}']"
+    if ioc_type is IOCType.DOMAIN:
+        return f"[domain-name:value = '{escaped}']"
+    if ioc_type is IOCType.URL:
+        return f"[url:value = '{escaped}']"
+    algorithm = {32: "MD5", 40: "SHA-1", 64: "SHA-256"}[len(value)]
+    return f"[file:hashes.'{algorithm}' = '{escaped}']"
+
+
+def _stix_timestamp(value: datetime) -> str:
+    normalized = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return normalized.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 async def _page_provenance(

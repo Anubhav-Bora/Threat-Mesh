@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 
-from app.api.dependencies import AdminDep, SessionDep
+from app.api.dependencies import AIRateLimitDep, AdminDep, SessionDep
 from app.api.schemas import (
     ReportDetail,
     ReportScheduleResponse,
@@ -13,8 +13,11 @@ from app.api.schemas import (
     UpdateReportScheduleRequest,
 )
 from app.errors import AppError
+from app.genai import ReportService, build_provider
+from app.maintenance import DataRetentionService
 from app.models import Report, ReportSchedule
-from app.report_scheduling import ReportScheduleStore, next_report_run
+from app.models.enums import ReportCadence
+from app.report_scheduling import ReportScheduleStore, calendar_report_period, next_report_run
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -68,6 +71,29 @@ def _schedule_response(request: Request, schedule: ReportSchedule) -> ReportSche
         updated_at=schedule.updated_at,
         admin_auth_required=settings.is_production or bool(settings.admin_api_key),
     )
+
+
+@router.post("/generate", response_model=ReportSummary)
+async def generate_report(request: Request, _: AIRateLimitDep) -> ReportSummary:
+    settings = request.app.state.settings
+    now = datetime.now(UTC)
+    await DataRetentionService(
+        request.app.state.database.session_factory,
+        settings.data_retention_days,
+    ).purge_stale_records(now)
+    provider = build_provider(settings)
+    start, end = calendar_report_period(
+        ReportCadence.WEEKLY,
+        now,
+        weekly_day=settings.report_day_of_week,
+    )
+    async with request.app.state.job_locks["reports"]:
+        report = await ReportService(request.app.state.database.session_factory, provider).generate(
+            period_start=start,
+            period_end=end,
+            cadence=ReportCadence.WEEKLY,
+        )
+    return ReportSummary.model_validate(report)
 
 
 @router.get("/schedule", response_model=ReportScheduleResponse)

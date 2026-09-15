@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
+    }
+  ],
+  "env": {
+    "SCHEDULER_ENABLED": "false",
+    "EXTERNAL_SCHEDULER_ENABLED": "false",
+    "AUTO_CREATE_SCHEMA": "false",
+    "TRUSTED_HOSTS": "*",
+    "CORS_ORIGINS": "*"
+  }
+}

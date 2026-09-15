@@ -32,6 +32,28 @@ export interface Indicator {
   tags: string[];
 }
 
+export interface InvestigationMatch {
+  query: string;
+  normalizedQuery: string;
+  indicator: Indicator;
+  blocklistEligible: boolean;
+  warnings: string[];
+}
+
+export interface InvestigationResult {
+  queried: number;
+  matched: number;
+  matches: InvestigationMatch[];
+  unmatched: string[];
+  invalid: string[];
+}
+
+export interface StixBundle {
+  type: "bundle";
+  id: string;
+  objects: Array<Record<string, unknown>>;
+}
+
 export type LineageConfidenceStatus = "available" | "pending";
 export type LineageEnrichmentStatus =
   "available" | "not_applicable" | "unavailable";

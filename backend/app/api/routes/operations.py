@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
@@ -8,6 +10,7 @@ from app.api.schemas import OperationResult
 from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.ingestion import IngestionService
+from app.maintenance import DataRetentionService
 from app.models import FeedRun, FeedRunStatus
 from app.pipeline import PipelineService
 
@@ -31,14 +34,31 @@ async def _enter_job(request: Request, name: str):
 
 
 @router.post("/feeds/sync", response_model=OperationResult)
-async def sync_feeds(request: Request, _: AdminDep) -> OperationResult:
+async def sync_feeds(request: Request, _: AdminDep, feed: str | None = None) -> OperationResult:
     _require_embedded_pipeline_control(request)
+    selected_feeds: set[str] | None = None
+    if feed is not None:
+        normalized_feed = feed.strip().lower()
+        allowed_feeds = {"urlhaus", "threatfox", "feodo"}
+        if normalized_feed not in allowed_feeds:
+            raise AppError(
+                422,
+                "invalid_feed",
+                "Feed must be one of: urlhaus, threatfox, feodo",
+            )
+        selected_feeds = {normalized_feed}
     lock = await _enter_job(request, "feeds")
     async with lock:
+        retention = await DataRetentionService(
+            request.app.state.database.session_factory,
+            request.app.state.settings.data_retention_days,
+        ).purge_stale_records(datetime.now(UTC))
         service = IngestionService(
             request.app.state.database.session_factory, request.app.state.settings
         )
-        return OperationResult(details=await service.sync_all())
+        details = await service.sync_all(selected_feeds)
+        details["retention"] = retention
+        return OperationResult(details=details)
 
 
 @router.get("/feeds/status")

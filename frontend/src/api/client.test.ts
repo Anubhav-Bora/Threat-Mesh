@@ -568,6 +568,37 @@ describe("FastAPI client contract", () => {
     );
   });
 
+  it("posts to /reports/generate without an administrator key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        jsonResponse({
+          id: 33,
+          cadence: "weekly",
+          title: "Manual weekly report",
+          period_start: "2026-08-31T00:00:00Z",
+          period_end: "2026-09-07T00:00:00Z",
+          created_at: "2026-09-07T02:00:00Z",
+          provider: "ollama",
+          is_demo: false,
+          model: "local",
+          report_text: "# Manual weekly report\n\nDraft.",
+          facts_json: {
+            top_malware_families_by_observation: [["Example", 2]],
+          },
+        }),
+      );
+
+    await threatApi.generateWeeklyReport();
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/reports/generate");
+    expect(init).toMatchObject({
+      method: "POST",
+    });
+    expect(init?.headers).not.toHaveProperty("X-API-Key");
+  });
+
   it("uses rule corroboration and leaves unsupported risk unassessed", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse([
@@ -600,7 +631,7 @@ describe("FastAPI client contract", () => {
       jsonResponse({ detail: "database unavailable" }, 503),
     );
     await expect(threatApi.campaigns()).rejects.toThrow(
-      "API request failed (503)",
+      "database unavailable",
     );
   });
 
@@ -609,7 +640,7 @@ describe("FastAPI client contract", () => {
       jsonResponse({ detail: "LLM provider unavailable" }, 503),
     );
     await expect(threatApi.ask("Summarize this week")).rejects.toThrow(
-      "API request failed (503)",
+      "LLM provider unavailable",
     );
   });
 

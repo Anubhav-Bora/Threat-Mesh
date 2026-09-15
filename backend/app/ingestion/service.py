@@ -53,20 +53,20 @@ class IngestionService:
                 auth_key=self.settings.abusech_auth_key,
                 max_response_bytes=self.settings.feed_max_response_bytes,
             ),
+            FeodoConnector(
+                client,
+                self.settings.feodo_url,
+                max_response_bytes=self.settings.feed_max_response_bytes,
+            ),
             ThreatFoxConnector(
                 client,
                 self.settings.threatfox_url,
                 auth_key=self.settings.abusech_auth_key,
                 max_response_bytes=self.settings.feed_max_response_bytes,
             ),
-            FeodoConnector(
-                client,
-                self.settings.feodo_url,
-                max_response_bytes=self.settings.feed_max_response_bytes,
-            ),
         ]
 
-    async def sync_all(self) -> dict[str, object]:
+    async def sync_all(self, feed_names: set[str] | None = None) -> dict[str, object]:
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(
             timeout=self.settings.http_timeout_seconds,
@@ -75,7 +75,10 @@ class IngestionService:
         )
         results: list[FeedSyncResult] = []
         try:
-            for connector in self._connectors or self.build_connectors(client):
+            connectors = self._connectors or self.build_connectors(client)
+            if feed_names is not None:
+                connectors = [connector for connector in connectors if connector.name in feed_names]
+            for connector in connectors:
                 if connector.requires_auth and not connector.auth_key:
                     results.append(
                         FeedSyncResult(

@@ -9,6 +9,7 @@ import {
   Hexagon,
   Menu,
   Search,
+  ScanSearch,
   Settings,
   ShieldCheck,
   Swords,
@@ -24,6 +25,7 @@ const navigation = [
   { to: "/campaigns", label: "Campaigns", icon: Swords },
   { to: "/attack", label: "MITRE ATT&CK", icon: Hexagon },
   { to: "/indicators", label: "Indicators", icon: Crosshair },
+  { to: "/investigate", label: "Investigate", icon: ScanSearch },
   { to: "/reports", label: "Intel reports", icon: FileText },
   { to: "/rules", label: "Detection rules", icon: FileCode2 },
   { to: "/assistant", label: "Ask ThreatMesh", icon: Bot },
@@ -55,6 +57,12 @@ const routeMeta: Record<
     eyebrow: "Investigation",
     title: "Indicator explorer",
     description: "Search, validate, and trace normalized OSINT evidence.",
+  },
+  "/investigate": {
+    eyebrow: "Triage",
+    title: "Investigation workbench",
+    description:
+      "Check alert observables against normalized evidence and export validated matches.",
   },
   "/reports": {
     eyebrow: "Intelligence products",

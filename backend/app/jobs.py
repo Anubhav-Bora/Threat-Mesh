@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.genai import ReportService, build_provider
 from app.genai.reports import report_schedule_key
 from app.logging import configure_logging
+from app.maintenance import DataRetentionService
 from app.models import Report
 from app.pipeline import PipelineService
 from app.report_scheduling import ReportScheduleStore, calendar_report_period
@@ -107,6 +108,8 @@ async def run_coordinator(settings: Settings | None = None) -> dict[str, object]
     configure_logging(resolved.log_level, json_logs=resolved.is_production)
     database = Database(resolved)
     try:
+        if resolved.auto_create_schema:
+            await database.create_schema()
         async with _coordinator_lock(database) as acquired:
             if not acquired:
                 result: dict[str, object] = {
@@ -114,6 +117,10 @@ async def run_coordinator(settings: Settings | None = None) -> dict[str, object]
                     "reason": "already_running",
                 }
             else:
+                await DataRetentionService(
+                    database.session_factory,
+                    resolved.data_retention_days,
+                ).purge_stale_records(datetime.now(UTC))
                 pipeline = await PipelineService(database.session_factory, resolved).run_full()
                 report = await _generate_due_report(database, resolved)
                 result = {"status": "completed", "pipeline": pipeline, "report": report}

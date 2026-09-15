@@ -14,6 +14,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { API_BASE_URL } from "../api/client";
+import { OperationsCenter } from "../components/OperationsCenter";
 import { Badge, CopyButton, PanelHeader } from "../components/UI";
 import { useApiMode, useFeedStatus, useSummary } from "../hooks/useThreatData";
 
@@ -149,6 +150,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <OperationsCenter enabled={mode === "live"} />
 
       <div className="settings-grid">
         <section className="panel setup-card setup-card--wide">

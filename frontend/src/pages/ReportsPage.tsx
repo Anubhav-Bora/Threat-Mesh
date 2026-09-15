@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+﻿import { type FormEvent, useEffect, useState } from "react";
 import {
   Bot,
   CalendarClock,
@@ -11,347 +11,90 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { ApiRequestError, threatApi } from "../api/client";
+import { threatApi } from "../api/client";
 import { Badge, EmptyState, SkeletonRows } from "../components/UI";
 import {
   useReport,
   useReports,
   useReportSchedule,
 } from "../hooks/useThreatData";
-import type { ReportCadence, ReportSchedule, ThreatReport } from "../types";
+import type { ThreatReport } from "../types";
 import { markSyntheticArtifact } from "../utils/artifacts";
 import { downloadText, formatDate, formatIsoUtc } from "../utils/format";
 
-const WEEKDAY_LABELS: Record<string, string> = {
-  mon: "Monday",
-  tue: "Tuesday",
-  wed: "Wednesday",
-  thu: "Thursday",
-  fri: "Friday",
-  sat: "Saturday",
-  sun: "Sunday",
-};
+function ManualReportPanel({
+  onReportGenerated,
+}: {
+  onReportGenerated?: (reportId: string) => Promise<void> | void;
+}) {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-function scheduledHour(schedule: ReportSchedule) {
-  return `${String(schedule.hourUtc).padStart(2, "0")}:00 ${schedule.timezone}`;
-}
-
-function scheduleSummary(schedule: ReportSchedule, cadence = schedule.cadence) {
-  if (cadence === "monthly") {
-    const day =
-      schedule.monthlyDay === 1 ? "first day" : `day ${schedule.monthlyDay}`;
-    return `On the ${day} of each month at ${scheduledHour(schedule)}`;
-  }
-  const weekday =
-    WEEKDAY_LABELS[schedule.weeklyDay.toLowerCase()] ?? schedule.weeklyDay;
-  return `Every ${weekday} at ${scheduledHour(schedule)}`;
-}
-
-function nextRunLabel(schedule: ReportSchedule) {
-  if (!schedule.nextRunAt) return "Waiting for the scheduler";
-  const nextRun = new Date(schedule.nextRunAt);
-  if (Number.isNaN(nextRun.getTime())) return "Next run unavailable";
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      timeZone: schedule.timezone,
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-      timeZoneName: "short",
-    }).format(nextRun);
-  } catch {
-    return nextRun.toISOString();
-  }
-}
-
-function ReportSchedulePanel() {
-  const scheduleQuery = useReportSchedule();
-  const [savedSchedule, setSavedSchedule] = useState<ReportSchedule | null>(
-    null,
-  );
-  const schedule = savedSchedule ?? scheduleQuery.data?.data;
-  const [cadence, setCadence] = useState<ReportCadence>("weekly");
-  const [showAuthorization, setShowAuthorization] = useState(false);
-  const [adminKey, setAdminKey] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const hasPendingChange = Boolean(schedule && cadence !== schedule.cadence);
-
-  useEffect(() => {
-    if (schedule) setCadence(schedule.cadence);
-  }, [schedule]);
-
-  const closeAuthorization = () => {
-    if (isSaving) return;
-    setAdminKey("");
-    setSaveError(null);
-    setShowAuthorization(false);
-  };
-
-  const applySchedule = async (requestKey: string) => {
-    if (!schedule) return;
-    setAdminKey("");
-    setSaveError(null);
-    setSaveNotice(null);
-    setIsSaving(true);
+  const runReport = async (_event?: FormEvent<HTMLFormElement>) => {
+    setIsGenerating(true);
+    setError(null);
+    setNotice(null);
     try {
-      const result = await threatApi.updateReportSchedule(cadence, requestKey);
-      setSavedSchedule(result.data);
-      setCadence(result.data.cadence);
-      setSaveNotice(
-        `${result.data.cadence === "weekly" ? "Weekly" : "Monthly"} automatic reporting is now active.`,
+      const generated = await threatApi.generateWeeklyReport();
+      setNotice("Generated " + generated.data.title + ".");
+      if (onReportGenerated) await onReportGenerated(generated.data.id);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The report could not be generated.",
       );
-      setShowAuthorization(false);
-      void scheduleQuery.refetch();
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 401) {
-        setSaveError("The administrator key was not accepted. Try again.");
-      } else if (error instanceof ApiRequestError && error.status === 503) {
-        setSaveError(
-          "Schedule changes are disabled until an administrator key is configured on the backend.",
-        );
-      } else {
-        setSaveError("The schedule could not be saved. No change was applied.");
-      }
     } finally {
-      setAdminKey("");
-      setIsSaving(false);
+      setIsGenerating(false);
     }
-  };
-
-  const authorizeSave = () => {
-    if (!schedule) return;
-    if (!schedule.adminAuthRequired) {
-      void applySchedule("");
-      return;
-    }
-    setAdminKey("");
-    setSaveError(null);
-    setSaveNotice(null);
-    setShowAuthorization(true);
-  };
-
-  const saveSchedule = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const requestKey = adminKey.trim();
-    if (!requestKey) return;
-    await applySchedule(requestKey);
   };
 
   return (
-    <section
-      className="report-schedule"
-      aria-labelledby="report-schedule-title"
-    >
+    <section className="report-schedule" aria-labelledby="manual-report-title">
       <div className="report-schedule__head">
         <div>
-          <span className="eyebrow">Automatic reports</span>
-          <strong id="report-schedule-title">Generation schedule</strong>
+          <span className="eyebrow">On-demand intelligence</span>
+          <strong id="manual-report-title">Weekly report</strong>
         </div>
-        {schedule && (
-          <Badge tone={schedule.schedulerRunning ? "success" : "warning"} dot>
-            {schedule.schedulerMode === "external"
-              ? "externally managed"
-              : schedule.schedulerRunning
-                ? "running"
-                : "paused"}
-          </Badge>
-        )}
+        <Badge tone="success" dot>Manual</Badge>
       </div>
-
-      {scheduleQuery.isLoading && (
-        <p className="report-schedule__message">Loading schedule...</p>
-      )}
-      {scheduleQuery.isError && (
-        <p className="report-schedule__message report-schedule__message--error">
-          The automatic schedule is unavailable. Existing reports remain
-          accessible.
+      <div className="report-schedule__provider report-schedule__provider--ready">
+        <Sparkles size={14} />
+        <span>Reporting window</span>
+        <strong>Previous complete week</strong>
+      </div>
+      <p className="report-schedule__message">
+        Generate a fresh evidence-bounded report when needed. No cron job or
+        persistent scheduler is required.
+      </p>
+      {notice && (
+        <p className="report-schedule__success" role="status">
+          <CheckCircle2 size={14} />
+          {notice}
         </p>
       )}
-
-      {schedule && (
-        <>
-          <div
-            className={`report-schedule__provider ${
-              schedule.providerConfigured
-                ? "report-schedule__provider--ready"
-                : "report-schedule__provider--warning"
-            }`}
-          >
-            <Sparkles size={14} />
-            <span>AI provider</span>
-            <strong>
-              {schedule.providerConfigured ? "Ready" : "Not configured"}
-            </strong>
-          </div>
-
-          <div
-            className="report-schedule__choices"
-            role="group"
-            aria-label="Report generation cadence"
-          >
-            {(["weekly", "monthly"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={cadence === option ? "is-selected" : ""}
-                aria-pressed={cadence === option}
-                disabled={isSaving}
-                onClick={() => {
-                  setCadence(option);
-                  setSaveNotice(null);
-                }}
-              >
-                <strong>{option === "weekly" ? "Weekly" : "Monthly"}</strong>
-                <span>
-                  {option === "weekly"
-                    ? (WEEKDAY_LABELS[schedule.weeklyDay.toLowerCase()] ??
-                      schedule.weeklyDay)
-                    : schedule.monthlyDay === 1
-                      ? "First day"
-                      : `Day ${schedule.monthlyDay}`}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="report-schedule__next">
-            <CalendarClock size={16} />
-            <div>
-              <span>{hasPendingChange ? "Pending cadence" : "Next draft"}</span>
-              <strong>
-                {hasPendingChange
-                  ? "Save to calculate next run"
-                  : nextRunLabel(schedule)}
-              </strong>
-              <small>{scheduleSummary(schedule, cadence)}</small>
-            </div>
-          </div>
-
-          {!schedule.schedulerRunning && (
-            <p className="report-schedule__message report-schedule__message--warning">
-              The backend scheduler is paused. The cadence is retained, but no
-              report will run until scheduling is enabled.
-            </p>
-          )}
-          {!schedule.providerConfigured && (
-            <p className="report-schedule__message report-schedule__message--warning">
-              Automatic drafts cannot run until Gemini or Ollama is configured
-              on the backend.
-            </p>
-          )}
-
-          {saveNotice && (
-            <p className="report-schedule__success" role="status">
-              <CheckCircle2 size={14} />
-              {saveNotice}
-            </p>
-          )}
-          {saveError && !showAuthorization && (
-            <p
-              className="report-schedule__message report-schedule__message--error"
-              role="alert"
-            >
-              {saveError}
-            </p>
-          )}
-
-          <button
-            className="button button--primary button--small report-schedule__save"
-            type="button"
-            disabled={
-              !hasPendingChange ||
-              scheduleQuery.data?.mode === "demo" ||
-              isSaving
-            }
-            onClick={authorizeSave}
-          >
-            {isSaving ? "Saving..." : "Save schedule"}
-          </button>
-          <p className="report-schedule__policy">
-            Drafts use the latest completed reporting window and always require
-            analyst review.
-          </p>
-        </>
+      {error && (
+        <p className="report-schedule__message report-schedule__message--error" role="alert">
+          {error}
+        </p>
       )}
-
-      {showAuthorization && schedule && (
-        <div
-          className="modal-overlay"
-          role="presentation"
-          onMouseDown={closeAuthorization}
-        >
-          <form
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Authorize schedule change"
-            aria-describedby="schedule-authorization-description"
-            onSubmit={saveSchedule}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <span className="modal__icon">
-              <LockKeyhole size={23} />
-            </span>
-            <h2>Authorize schedule change</h2>
-            <p id="schedule-authorization-description">
-              Changing the automatic cadence affects report generation and AI
-              usage. Enter the administrator key for this request only.
-            </p>
-            <label>
-              Administrator key
-              <input
-                type="password"
-                name="administrator-key"
-                autoComplete="off"
-                value={adminKey}
-                disabled={isSaving}
-                onChange={(event) => setAdminKey(event.target.value)}
-                autoFocus
-              />
-            </label>
-            <div className="modal__notice">
-              <LockKeyhole size={15} />
-              Used once to authorize this schedule change. It is never saved in
-              browser storage.
-            </div>
-            {saveError && (
-              <p className="modal__error" role="alert">
-                {saveError}
-              </p>
-            )}
-            <div className="modal__actions">
-              <button
-                className="button button--ghost"
-                type="button"
-                disabled={isSaving}
-                onClick={closeAuthorization}
-              >
-                Cancel
-              </button>
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={!adminKey.trim() || isSaving}
-              >
-                {isSaving ? "Saving..." : "Apply schedule"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <button
+        className="button button--primary"
+        type="button"
+        disabled={isGenerating}
+        onClick={() => void runReport()}
+      >
+        <Sparkles size={15} />
+        {isGenerating ? "Generating report..." : "Generate weekly report"}
+      </button>
     </section>
   );
 }
-
 function reportMarkdown(report: ThreatReport) {
   const narrative = report.content?.trim()
-    ? `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} – ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n${report.content.trim()}\n`
-    : `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} – ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n## Executive summary\n\n${report.executiveSummary}\n\n## Key findings\n\n${report.keyFindings.map((item) => `- ${item}`).join("\n")}\n\n## Recommendations\n\n${report.recommendations.map((item) => `- ${item}`).join("\n")}\n\n---\nGenerated from deterministic ThreatMesh aggregates. AI-authored language requires analyst review.\n`;
+    ? `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} â€“ ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n${report.content.trim()}\n`
+    : `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} â€“ ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n## Executive summary\n\n${report.executiveSummary}\n\n## Key findings\n\n${report.keyFindings.map((item) => `- ${item}`).join("\n")}\n\n## Recommendations\n\n${report.recommendations.map((item) => `- ${item}`).join("\n")}\n\n---\nGenerated from deterministic ThreatMesh aggregates. AI-authored language requires analyst review.\n`;
   return markSyntheticArtifact(narrative, "markdown", report.isDemo);
 }
 
@@ -402,11 +145,16 @@ export default function ReportsPage() {
             <strong>{reports.length} products</strong>
           </div>
         </div>
-        <ReportSchedulePanel />
+        <ManualReportPanel
+          onReportGenerated={async (reportId: string) => {
+            await query.refetch();
+            setSelectedId(reportId);
+          }}
+        />
         <div className="report-list">
           {reports.length === 0 && (
             <p className="report-list__empty">
-              Scheduled drafts will appear here after their first completed run.
+              Generated weekly drafts will appear here.
             </p>
           )}
           {reports.map((report) => (
@@ -422,11 +170,11 @@ export default function ReportsPage() {
               <div>
                 <strong>{report.title}</strong>
                 <span>
-                  {formatDate(report.periodStart, "MMM d")} –{" "}
+                  {formatDate(report.periodStart, "MMM d")} â€“{" "}
                   {formatDate(report.periodEnd, "MMM d, yyyy")}
                 </span>
                 <small>
-                  {report.cadence === "weekly" ? "Weekly" : "Monthly"} draft ·
+                  {report.cadence === "weekly" ? "Weekly" : "Monthly"} draft Â·
                   review required
                 </small>
                 {report.isDemo && <small>Synthetic demo evidence</small>}
@@ -474,8 +222,8 @@ export default function ReportsPage() {
       {!citedReportId && !report && (
         <section className="panel report-document report-document--empty">
           <EmptyState
-            title="No scheduled reports yet"
-            description="ThreatMesh will create the first draft at the next automatic run. Reports use the current OSINT corpus and remain review-required until an analyst approves them."
+            title="No reports generated yet"
+            description="Generate a weekly draft when you need one. Reports use the current OSINT corpus and remain review-required until an analyst approves them."
           />
         </section>
       )}
@@ -507,7 +255,7 @@ export default function ReportsPage() {
               <div className="report-byline">
                 <span>
                   <CalendarDays size={14} />
-                  {formatDate(report.periodStart)} —{" "}
+                  {formatDate(report.periodStart)} â€”{" "}
                   {formatDate(report.periodEnd)}
                 </span>
               </div>
@@ -538,7 +286,7 @@ export default function ReportsPage() {
                 {isAiGenerated
                   ? "AI-assisted, fact-grounded narrative"
                   : report.isDemo
-                    ? "Deterministic synthetic narrative · no LLM call"
+                    ? "Deterministic synthetic narrative Â· no LLM call"
                     : "Analyst-authored, fact-grounded narrative"}
               </strong>
               <span>
@@ -556,7 +304,7 @@ export default function ReportsPage() {
               <h3>Executive summary</h3>
               <p className="report-lead">
                 {detailQuery.isLoading
-                  ? "Retrieving report narrative…"
+                  ? "Retrieving report narrativeâ€¦"
                   : report.executiveSummary}
               </p>
             </div>
@@ -619,12 +367,12 @@ export default function ReportsPage() {
             </section>
           )}
           <footer className="report-document__footer">
-            <span>ThreatMesh intelligence product · {report.id}</span>
+            <span>ThreatMesh intelligence product Â· {report.id}</span>
             <span>
               {report.isDemo
                 ? "Synthetic documentation corpus"
                 : "Public OSINT"}
-              {" · Analyst review required"}
+              {" Â· Analyst review required"}
             </span>
           </footer>
         </article>
@@ -632,3 +380,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+
