@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 
-from app.api.dependencies import AIRateLimitDep, AdminDep, SessionDep
+from app.api.dependencies import AdminDep, AIRateLimitDep, SessionDep
 from app.api.schemas import (
     ReportDetail,
     ReportScheduleResponse,

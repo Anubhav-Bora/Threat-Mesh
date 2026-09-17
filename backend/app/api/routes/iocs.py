@@ -325,7 +325,8 @@ def _blocklist_warnings(ioc_type: IOCType, value: str) -> list[str]:
         address = ip_address(value)
         if not address.is_global:
             return [
-                "Non-global IP address; excluded from the plain blocklist to avoid local or reserved traffic disruption."
+                "Non-global IP address; excluded from the plain blocklist to avoid "
+                "local or reserved traffic disruption."
             ]
         return []
     hostname = value if ioc_type is IOCType.DOMAIN else urlsplit(value).hostname
@@ -341,7 +342,8 @@ def _blocklist_warnings(ioc_type: IOCType, value: str) -> list[str]:
         )
         if "." not in normalized or normalized.endswith(reserved_suffixes):
             return [
-                "Local or reserved hostname; excluded from the plain blocklist to reduce false positives."
+                "Local or reserved hostname; excluded from the plain blocklist to "
+                "reduce false positives."
             ]
     return []
 
@@ -393,8 +395,8 @@ async def _page_provenance(
         )
     ).all()
     result: dict[tuple[bool, IOCType, str], list[str]] = {}
-    for is_demo, ioc_type, indicator_key, source in rows:
-        result.setdefault((is_demo, ioc_type, indicator_key), []).append(source)
+    for is_demo, ioc_type, stored_indicator_key, source in rows:
+        result.setdefault((is_demo, ioc_type, stored_indicator_key), []).append(source)
     return result
 
 

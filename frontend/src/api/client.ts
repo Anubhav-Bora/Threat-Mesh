@@ -1036,7 +1036,7 @@ export const threatApi = {
         "Automatic reporting is unavailable in demo mode",
       );
     }
-      return {
+    return {
       data: normalizeReport(
         await request<any>(
           "/reports/generate",
@@ -1109,7 +1109,7 @@ export const threatApi = {
       queried: safeNumber(raw?.queried),
       matched: safeNumber(raw?.matched),
       matches: Array.isArray(raw?.matches)
-          ? raw.matches.map((item: any, index: number) => ({
+        ? raw.matches.map((item: any, index: number) => ({
             query: safeString(item?.query),
             normalizedQuery: safeString(
               item?.normalized_query,
@@ -1130,9 +1130,7 @@ export const threatApi = {
             .filter(Boolean)
         : [],
       invalid: Array.isArray(raw?.invalid)
-        ? raw.invalid
-            .map((value: unknown) => safeString(value))
-            .filter(Boolean)
+        ? raw.invalid.map((value: unknown) => safeString(value)).filter(Boolean)
         : [],
     };
   },

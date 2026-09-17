@@ -111,8 +111,12 @@ describe("ReportsPage manual reporting", () => {
       expect(threatApi.generateWeeklyReport).toHaveBeenCalledWith(),
     );
     await waitFor(() => expect(reportsRefetchMock).toHaveBeenCalled());
-    expect(screen.queryByLabelText("Administrator key")).not.toBeInTheDocument();
-    expect(screen.getByText("Generated Generated weekly report.")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Administrator key"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Generated Generated weekly report."),
+    ).toBeInTheDocument();
   });
 
   it("shows report generation errors without requesting a key", async () => {
@@ -134,7 +138,9 @@ describe("ReportsPage manual reporting", () => {
         screen.getByText("Report generation is temporarily unavailable"),
       ).toBeInTheDocument(),
     );
-    expect(screen.queryByLabelText("Administrator key")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Administrator key"),
+    ).not.toBeInTheDocument();
   });
 
   it("fetches a cited report even when it is outside the loaded index", () => {
@@ -148,4 +154,3 @@ describe("ReportsPage manual reporting", () => {
     expect(screen.getByText("Archived exact report")).toBeInTheDocument();
   });
 });
-

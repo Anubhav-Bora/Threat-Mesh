@@ -14,9 +14,9 @@ from app.enrichment import EnrichmentService
 from app.errors import AppError
 from app.genai import ReportService, build_provider
 from app.ingestion import IngestionService
+from app.maintenance import DataRetentionService
 from app.models import ReportCadence, ReportSchedule
 from app.pipeline import PipelineService
-from app.maintenance import DataRetentionService
 from app.report_scheduling import ReportScheduleStore, calendar_report_period
 
 logger = logging.getLogger(__name__)

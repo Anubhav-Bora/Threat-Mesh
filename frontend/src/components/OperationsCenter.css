@@ -19,7 +19,8 @@
   padding: 22px;
   margin-bottom: 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  background: radial-gradient(
+  background:
+    radial-gradient(
       circle at 85% 15%,
       color-mix(in srgb, var(--accent) 16%, transparent),
       transparent 35%

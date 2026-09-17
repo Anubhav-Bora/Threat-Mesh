@@ -79,8 +79,10 @@ def _normalize_path(raw_path: str | None) -> str:
     path = (raw_path or "").strip()
     if not path:
         return "/"
-    path = path.replace("/backend/api/index.py", "", 1) if path.startswith("/backend/api/index.py") else path
-    path = path.replace("/backend/api/index", "", 1) if path.startswith("/backend/api/index") else path
+    if path.startswith("/backend/api/index.py"):
+        path = path.replace("/backend/api/index.py", "", 1)
+    if path.startswith("/backend/api/index"):
+        path = path.replace("/backend/api/index", "", 1)
     if path.startswith("/api/index.py"):
         path = path[len("/api/index.py") :]
     if path.startswith("/api/index"):

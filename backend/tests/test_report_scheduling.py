@@ -9,10 +9,10 @@ from sqlalchemy import func, select
 from app.genai.providers import StaticProvider
 from app.genai.reports import ReportService
 from app.models import (
+    IOC,
     FeedRun,
     FeedRunStatus,
     GeoCache,
-    IOC,
     Report,
     ReportCadence,
     ReportSchedule,
@@ -116,7 +116,9 @@ async def test_report_schedule_rejects_unknown_cadence_and_manual_generation(cli
 
 
 @pytest.mark.asyncio
-async def test_manual_weekly_report_generation_and_retention_cleanup(client, app, monkeypatch) -> None:
+async def test_manual_weekly_report_generation_and_retention_cleanup(
+    client, app, monkeypatch
+) -> None:
     old_ioc = make_ioc(value="192.0.2.1")
     old_ioc.last_seen = datetime(2026, 8, 1, tzinfo=UTC)
     old_ioc.first_seen = datetime(2026, 8, 1, tzinfo=UTC)

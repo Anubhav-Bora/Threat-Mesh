@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import Campaign, FeedRun, GeoCache, IOC, Report
+from app.models import IOC, Campaign, FeedRun, GeoCache, Report
 
 
 def _utc(value: datetime | None = None) -> datetime:

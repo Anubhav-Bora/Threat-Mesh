@@ -1,7 +1,6 @@
-﻿import { type FormEvent, useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import {
   Bot,
-  CalendarClock,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -13,11 +12,7 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { threatApi } from "../api/client";
 import { Badge, EmptyState, SkeletonRows } from "../components/UI";
-import {
-  useReport,
-  useReports,
-  useReportSchedule,
-} from "../hooks/useThreatData";
+import { useReport, useReports } from "../hooks/useThreatData";
 import type { ThreatReport } from "../types";
 import { markSyntheticArtifact } from "../utils/artifacts";
 import { downloadText, formatDate, formatIsoUtc } from "../utils/format";
@@ -31,7 +26,7 @@ function ManualReportPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const runReport = async (_event?: FormEvent<HTMLFormElement>) => {
+  const runReport = async () => {
     setIsGenerating(true);
     setError(null);
     setNotice(null);
@@ -57,7 +52,9 @@ function ManualReportPanel({
           <span className="eyebrow">On-demand intelligence</span>
           <strong id="manual-report-title">Weekly report</strong>
         </div>
-        <Badge tone="success" dot>Manual</Badge>
+        <Badge tone="success" dot>
+          Manual
+        </Badge>
       </div>
       <div className="report-schedule__provider report-schedule__provider--ready">
         <Sparkles size={14} />
@@ -75,7 +72,10 @@ function ManualReportPanel({
         </p>
       )}
       {error && (
-        <p className="report-schedule__message report-schedule__message--error" role="alert">
+        <p
+          className="report-schedule__message report-schedule__message--error"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -93,8 +93,8 @@ function ManualReportPanel({
 }
 function reportMarkdown(report: ThreatReport) {
   const narrative = report.content?.trim()
-    ? `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} â€“ ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n${report.content.trim()}\n`
-    : `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} â€“ ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n## Executive summary\n\n${report.executiveSummary}\n\n## Key findings\n\n${report.keyFindings.map((item) => `- ${item}`).join("\n")}\n\n## Recommendations\n\n${report.recommendations.map((item) => `- ${item}`).join("\n")}\n\n---\nGenerated from deterministic ThreatMesh aggregates. AI-authored language requires analyst review.\n`;
+    ? `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} – ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n${report.content.trim()}\n`
+    : `# ${report.title}\n\n**Reporting period (UTC):** ${formatIsoUtc(report.periodStart)} – ${formatIsoUtc(report.periodEnd)}  \n**Created (UTC):** ${formatIsoUtc(report.createdAt)}  \n**Review state:** Not persisted by the API\n\n## Executive summary\n\n${report.executiveSummary}\n\n## Key findings\n\n${report.keyFindings.map((item) => `- ${item}`).join("\n")}\n\n## Recommendations\n\n${report.recommendations.map((item) => `- ${item}`).join("\n")}\n\n---\nGenerated from deterministic ThreatMesh aggregates. AI-authored language requires analyst review.\n`;
   return markSyntheticArtifact(narrative, "markdown", report.isDemo);
 }
 
@@ -170,11 +170,11 @@ export default function ReportsPage() {
               <div>
                 <strong>{report.title}</strong>
                 <span>
-                  {formatDate(report.periodStart, "MMM d")} â€“{" "}
+                  {formatDate(report.periodStart, "MMM d")} –{" "}
                   {formatDate(report.periodEnd, "MMM d, yyyy")}
                 </span>
                 <small>
-                  {report.cadence === "weekly" ? "Weekly" : "Monthly"} draft Â·
+                  {report.cadence === "weekly" ? "Weekly" : "Monthly"} draft ·
                   review required
                 </small>
                 {report.isDemo && <small>Synthetic demo evidence</small>}
@@ -255,7 +255,7 @@ export default function ReportsPage() {
               <div className="report-byline">
                 <span>
                   <CalendarDays size={14} />
-                  {formatDate(report.periodStart)} â€”{" "}
+                  {formatDate(report.periodStart)} —{" "}
                   {formatDate(report.periodEnd)}
                 </span>
               </div>
@@ -286,7 +286,7 @@ export default function ReportsPage() {
                 {isAiGenerated
                   ? "AI-assisted, fact-grounded narrative"
                   : report.isDemo
-                    ? "Deterministic synthetic narrative Â· no LLM call"
+                    ? "Deterministic synthetic narrative · no LLM call"
                     : "Analyst-authored, fact-grounded narrative"}
               </strong>
               <span>
@@ -304,7 +304,7 @@ export default function ReportsPage() {
               <h3>Executive summary</h3>
               <p className="report-lead">
                 {detailQuery.isLoading
-                  ? "Retrieving report narrativeâ€¦"
+                  ? "Retrieving report narrative…"
                   : report.executiveSummary}
               </p>
             </div>
@@ -367,12 +367,12 @@ export default function ReportsPage() {
             </section>
           )}
           <footer className="report-document__footer">
-            <span>ThreatMesh intelligence product Â· {report.id}</span>
+            <span>ThreatMesh intelligence product · {report.id}</span>
             <span>
               {report.isDemo
                 ? "Synthetic documentation corpus"
                 : "Public OSINT"}
-              {" Â· Analyst review required"}
+              {" · Analyst review required"}
             </span>
           </footer>
         </article>
@@ -380,4 +380,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-

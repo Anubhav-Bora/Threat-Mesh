@@ -96,19 +96,20 @@ export default function InvestigationPage() {
       "blocklist_eligible",
       "warnings",
     ];
-    const rows = result.matches.map(({ indicator, blocklistEligible, warnings }) =>
-      [
-        indicator.value,
-        indicator.type,
-        indicator.confidence,
-        indicator.malwareFamily,
-        indicator.sourceFeed,
-        indicator.lastSeen,
-        blocklistEligible ? "yes" : "no",
-        warnings.join("; "),
-      ]
-        .map(csvCell)
-        .join(","),
+    const rows = result.matches.map(
+      ({ indicator, blocklistEligible, warnings }) =>
+        [
+          indicator.value,
+          indicator.type,
+          indicator.confidence,
+          indicator.malwareFamily,
+          indicator.sourceFeed,
+          indicator.lastSeen,
+          blocklistEligible ? "yes" : "no",
+          warnings.join("; "),
+        ]
+          .map(csvCell)
+          .join(","),
     );
     downloadText(
       `${header.join(",")}\n${rows.join("\n")}\n`,
@@ -157,7 +158,9 @@ export default function InvestigationPage() {
             id="investigation-observables"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={"31.57.51.110\nmalicious.example\nhttps://example.test/payload"}
+            placeholder={
+              "31.57.51.110\nmalicious.example\nhttps://example.test/payload"
+            }
             spellCheck={false}
             rows={12}
           />
@@ -180,9 +183,9 @@ export default function InvestigationPage() {
           </div>
         </form>
         <p className="investigation-caveat">
-          <ShieldQuestion size={15} /> No match means "not present in the current
-          ThreatMesh corpus," not "safe." Matches are observations, not automatic
-          blocking decisions.
+          <ShieldQuestion size={15} /> No match means "not present in the
+          current ThreatMesh corpus," not "safe." Matches are observations, not
+          automatic blocking decisions.
         </p>
       </section>
 
@@ -213,10 +216,22 @@ export default function InvestigationPage() {
         {result && (
           <>
             <div className="investigation-summary">
-              <div><strong>{result.queried}</strong><span>Queried</span></div>
-              <div><strong>{result.matched}</strong><span>Matched</span></div>
-              <div><strong>{result.unmatched.length}</strong><span>Unknown</span></div>
-              <div><strong>{result.invalid.length}</strong><span>Invalid</span></div>
+              <div>
+                <strong>{result.queried}</strong>
+                <span>Queried</span>
+              </div>
+              <div>
+                <strong>{result.matched}</strong>
+                <span>Matched</span>
+              </div>
+              <div>
+                <strong>{result.unmatched.length}</strong>
+                <span>Unknown</span>
+              </div>
+              <div>
+                <strong>{result.invalid.length}</strong>
+                <span>Invalid</span>
+              </div>
             </div>
 
             {result.matches.length > 0 && (
@@ -231,47 +246,80 @@ export default function InvestigationPage() {
                     <FileJson2 size={15} />
                     {isExporting ? "Building STIX..." : "STIX 2.1"}
                   </button>
-                  <button className="button button--ghost" type="button" onClick={exportCsv}>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={exportCsv}
+                  >
                     <Download size={15} /> CSV
                   </button>
-                  <button className="button button--ghost" type="button" onClick={exportBlocklist}>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={exportBlocklist}
+                  >
                     <Download size={15} /> Blocklist
                   </button>
                 </div>
                 <div className="investigation-table-wrap">
                   <table className="investigation-table">
                     <thead>
-                      <tr><th>Observable</th><th>Context</th><th>Confidence</th><th>Last seen</th></tr>
+                      <tr>
+                        <th>Observable</th>
+                        <th>Context</th>
+                        <th>Confidence</th>
+                        <th>Last seen</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {result.matches.map(({ query, normalizedQuery, indicator, blocklistEligible, warnings }) => (
-                        <tr key={`${query}-${indicator.id}`}>
-                          <td>
-                            <code>{indicator.value}</code>
-                            {query !== normalizedQuery && (
-                              <span>Normalized from {query}</span>
-                            )}
-                            <Badge tone={blocklistEligible ? "neutral" : "warning"}>
-                              {blocklistEligible ? indicator.type : "review"}
-                            </Badge>
-                          </td>
-                          <td>
-                            <strong>{indicator.malwareFamily || "Unclassified"}</strong>
-                            <span>{indicator.sourceFeed} / {indicator.corroboratingFeeds ?? 1} source(s)</span>
-                            {warnings.map((warning) => (
-                              <span className="investigation-warning" key={warning}>
-                                {warning}
+                      {result.matches.map(
+                        ({
+                          query,
+                          normalizedQuery,
+                          indicator,
+                          blocklistEligible,
+                          warnings,
+                        }) => (
+                          <tr key={`${query}-${indicator.id}`}>
+                            <td>
+                              <code>{indicator.value}</code>
+                              {query !== normalizedQuery && (
+                                <span>Normalized from {query}</span>
+                              )}
+                              <Badge
+                                tone={blocklistEligible ? "neutral" : "warning"}
+                              >
+                                {blocklistEligible ? indicator.type : "review"}
+                              </Badge>
+                            </td>
+                            <td>
+                              <strong>
+                                {indicator.malwareFamily || "Unclassified"}
+                              </strong>
+                              <span>
+                                {indicator.sourceFeed} /{" "}
+                                {indicator.corroboratingFeeds ?? 1} source(s)
                               </span>
-                            ))}
-                          </td>
-                          <td>
-                            <span className={`investigation-score investigation-score--${indicator.confidence >= 70 ? "high" : indicator.confidence >= 40 ? "medium" : "low"}`}>
-                              {Math.round(indicator.confidence)}
-                            </span>
-                          </td>
-                          <td>{formatUtcDateTime(indicator.lastSeen)}</td>
-                        </tr>
-                      ))}
+                              {warnings.map((warning) => (
+                                <span
+                                  className="investigation-warning"
+                                  key={warning}
+                                >
+                                  {warning}
+                                </span>
+                              ))}
+                            </td>
+                            <td>
+                              <span
+                                className={`investigation-score investigation-score--${indicator.confidence >= 70 ? "high" : indicator.confidence >= 40 ? "medium" : "low"}`}
+                              >
+                                {Math.round(indicator.confidence)}
+                              </span>
+                            </td>
+                            <td>{formatUtcDateTime(indicator.lastSeen)}</td>
+                          </tr>
+                        ),
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -281,17 +329,24 @@ export default function InvestigationPage() {
             {(result.unmatched.length > 0 || result.invalid.length > 0) && (
               <div className="investigation-exceptions">
                 {result.unmatched.length > 0 && (
-                  <div><strong>Valid but not observed</strong><span>{result.unmatched.join(" / ")}</span></div>
+                  <div>
+                    <strong>Valid but not observed</strong>
+                    <span>{result.unmatched.join(" / ")}</span>
+                  </div>
                 )}
                 {result.invalid.length > 0 && (
-                  <div><strong>Malformed or unsupported</strong><span>{result.invalid.join(" / ")}</span></div>
+                  <div>
+                    <strong>Malformed or unsupported</strong>
+                    <span>{result.invalid.join(" / ")}</span>
+                  </div>
                 )}
               </div>
             )}
             {result.matched > 0 && (
               <div className="investigation-success">
-                <CheckCircle2 size={17} /> Exports contain matched evidence only;
-                the plain blocklist also excludes local and reserved values.
+                <CheckCircle2 size={17} /> Exports contain matched evidence
+                only; the plain blocklist also excludes local and reserved
+                values.
               </div>
             )}
           </>

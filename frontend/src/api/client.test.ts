@@ -630,9 +630,7 @@ describe("FastAPI client contract", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({ detail: "database unavailable" }, 503),
     );
-    await expect(threatApi.campaigns()).rejects.toThrow(
-      "database unavailable",
-    );
+    await expect(threatApi.campaigns()).rejects.toThrow("database unavailable");
   });
 
   it("surfaces a provider failure instead of fabricating a demo answer", async () => {

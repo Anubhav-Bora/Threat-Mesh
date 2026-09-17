@@ -150,10 +150,7 @@ export function EmptyState({
       <h2>{title}</h2>
       <p>{description}</p>
       {allowSync && (
-        <a
-          className="button button--primary"
-          href="/settings#operations"
-        >
+        <a className="button button--primary" href="/settings#operations">
           <Terminal size={16} />
           Open operations center
         </a>

@@ -221,7 +221,9 @@ export function OperationsCenter({ enabled }: { enabled: boolean }) {
             <Badge tone="success">Workflow</Badge>
           </div>
           <h3>Enrich indicators</h3>
-          <p>Add geographic and contextual metadata to newly ingested indicators.</p>
+          <p>
+            Add geographic and contextual metadata to newly ingested indicators.
+          </p>
           <button
             className="button button--ghost"
             type="button"

@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import Settings
 from app.models import Base
 
+
 def _normalize_asyncpg_url(url: str) -> str:
     url = url.strip()
     parsed = urlparse(url)
