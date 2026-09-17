@@ -1018,71 +1018,422 @@ does not quietly replace the result with fake data.
 
 ### Overview
 
-This is the starting dashboard.
+#### What it is
 
-It shows:
+Overview is the starting dashboard. It gives a quick picture of the evidence stored
+in ThreatMesh.
 
-- high-level counts;
+#### How it helps
+
+An analyst can quickly see whether data is arriving, how much evidence exists, what
+is changing, and where observations appear on the map. It helps the analyst decide
+where to look next.
+
+#### How it works
+
+The frontend requests summary statistics, feed status, trend buckets, and IOC
+GeoJSON from the backend. The backend calculates those values from the current
+analysis scope. The browser displays them as cards, charts, status messages, and an
+ArcGIS map.
+
+#### What it shows
+
+- high-level indicator, campaign, technique, and confidence counts;
 - whether the corpus is demo, live, mixed, or empty;
-- feed-health information;
+- feed-health and last-run information;
 - trends and distributions;
-- the map; and
-- administrator operations when enabled.
+- map clusters, heatmap, and location-context modes;
+- observation-window filters; and
+- administrator pipeline operations when enabled.
+
+Map clusters only combine nearby dots for display. They are not candidate campaigns.
+
+#### What it cannot prove
 
 Use it to understand the current state, not to make a final blocking decision.
+Large numbers or bright map areas do not automatically mean greater business risk.
 
 ### Investigate
 
-Paste up to 100 observables here.
+#### What it is
 
-ThreatMesh normalizes them, looks for exact matches in the local retained corpus,
-and separates them into matched, unmatched, and invalid groups. You can export
-matched results as STIX, CSV, or review-required text.
+Investigate is a bulk IOC lookup workbench. An observable is a value that can be
+checked, such as an IP, IP and port, domain, URL, or file hash.
+
+#### How it helps
+
+An analyst often begins with a list copied from an alert, email, incident ticket, or
+threat report. Checking every value one at a time is slow. This tab checks up to 100
+unique values together and keeps the result easy to export.
+
+#### How it works
+
+1. The analyst pastes one observable per line.
+2. ThreatMesh trims extra space and removes repeated input.
+3. It refangs common forms such as `hxxps` and `[.]`.
+4. It identifies the probable IOC type.
+5. It runs the same canonicalization rules used during feed ingestion.
+6. It performs an exact lookup in the retained ThreatMesh database.
+7. It prefers live evidence, then stronger confidence and newer evidence when more
+   than one stored result could answer the query.
+8. It returns matched, unmatched, and invalid groups.
+
+The lookup is passive. ThreatMesh does not visit, ping, scan, or resolve the pasted
+observables.
+
+#### What the result groups mean
+
+- **Matched:** a normalized value exists in the retained corpus. The result includes
+  evidence such as source, time, confidence, malware context, and warnings.
+- **Unmatched:** the value is valid, but no exact retained match was found. It is
+  unknown to this corpus, not safe.
+- **Invalid:** the value could not be interpreted as a supported IOC.
+
+#### Safe demo example
+
+When the frontend is in demo mode, these values come from the synthetic corpus:
+
+```text
+198.51.100.24
+cdn-auth-check[.]test
+hxxps://update-secure[.]test/v4/a.exe
+0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+999.999.999.999
+unknown-value
+```
+
+The first four are documentation-only synthetic examples and should match the
+bundled demo data. The last two demonstrate invalid input. In live mode, copy a
+real value from the Indicators tab to guarantee a match in the current corpus.
+
+#### Exports
+
+- **STIX 2.1 JSON** is for interoperable threat-intelligence tools.
+- **CSV** is a simple table for spreadsheets and other data tools.
+- **Plain text** is a review-required blocklist candidate.
+
+Only matched values are exported. Local, private, reserved, and documentation-only
+addresses can remain visible as evidence but are excluded from the plain blocklist
+when blocking them could disrupt normal traffic.
+
+#### What it cannot prove
+
+A match does not prove an IOC is currently malicious or suitable for blocking. An
+unmatched value does not prove safety.
 
 This page is the clearest real analyst workflow in the project.
 
 ### Indicators
 
-This page lists stored IOCs. Filters help narrow the list. Opening one item shows
-its context and evidence lineage.
+#### What it is
+
+Indicators is the searchable library of IOC observations stored by ThreatMesh.
+
+#### How it helps
+
+It lets an analyst move from a large corpus to a smaller set based on type, malware,
+confidence, date, or search text. It is also the main starting point for examining
+one IOC deeply.
+
+#### How it works
+
+The page sends filters, pagination, and observation-window values to the IOC API.
+The backend applies the filters to the selected live or demo scope and returns a
+bounded page of results. The frontend does not download the entire database to do
+all filtering itself.
+
+#### What opening an indicator shows
+
+- normalized IOC value and type;
+- network port when present;
+- first-seen and last-seen times;
+- source and corroborating observations;
+- malware family and tags;
+- confidence score and exact point components;
+- approximate geolocation and ASN context;
+- ATT&CK techniques;
+- candidate campaign membership;
+- generated rule and report links; and
+- known limitations.
+
+#### What it cannot prove
+
+An indicator row is a stored observation, not a final verdict. Approximate location
+does not identify the attacker, and the confidence score is not a probability.
 
 ### Campaigns
 
-This page shows algorithm-created groups of related indicators.
+#### What it is
+
+Campaigns shows candidate groups of related IOC observations found through graph
+analysis.
+
+#### How it helps
+
+Studying related infrastructure together can reveal patterns that are difficult to
+see in a flat IOC table. An analyst can compare malware families, ASNs, techniques,
+sources, countries, activity periods, and group members.
+
+#### How it works
+
+1. In-scope IOC identities become graph nodes.
+2. Meaningful shared evidence creates weighted graph edges.
+3. Time proximity by itself cannot create an edge.
+4. Louvain community detection finds groups with strong internal relationships.
+5. Invalid or single-indicator groups are rejected.
+6. Each accepted group is stored as a candidate campaign.
+
+The page displays a campaign list, relationship evidence, a graph, and member
+indicators. A graph line means the configured analytical relationship exists; it
+does not mean direct network communication was observed.
+
+#### What the labels mean
+
+- **Unattributed:** ThreatMesh is not claiming a known threat actor.
+- **IOC count:** the number of distinct members in the group.
+- **Average confidence:** an average of available IOC triage scores, not campaign
+  risk.
+- **Malware families/ASNs/techniques:** shared context that helps explain the group.
+
+#### What it cannot prove
 
 Remember: these are candidate campaigns. They are investigation suggestions, not
-proof of one attacker or confirmed actor attribution.
+proof of one attacker, one victim, direct communication, shared ownership, or
+confirmed actor attribution.
 
 ### ATT&CK
 
-This page shows techniques from the local MITRE ATT&CK catalog and which behaviors
-are currently connected to in-scope evidence.
+#### What it is
+
+ATT&CK shows techniques from the local MITRE ATT&CK catalog and current technique
+trends supported by in-scope IOC mappings.
+
+#### How it helps
+
+IOC values change quickly. ATT&CK provides a common behavior vocabulary that helps
+an analyst or detection engineer discuss what known malware is reported to do.
+
+#### How it works
+
+ThreatMesh synchronizes a validated, version-pinned official ATT&CK STIX bundle for
+technique definitions. A separate reviewed catalog maps selected malware families
+to selected technique IDs. The page combines this catalog with current observation
+counts.
+
+The default view can focus on techniques that have supporting evidence while still
+allowing the full local catalog to be viewed.
+
+#### What a technique entry means
+
+- the technique ID and name come from MITRE ATT&CK;
+- the tactic describes the broad goal;
+- the trend/count describes mapped ThreatMesh evidence; and
+- opening the related evidence lets an analyst check why it appears.
+
+#### What it cannot prove
+
+A mapping means public knowledge associates a malware family with a technique. It
+does not prove that technique occurred in the user's own network during this
+observation.
 
 ### Detection rules
 
-This page shows Sigma and Suricata drafts created from eligible high-confidence
-observations. It includes provenance and review warnings. Downloading a draft does
-not deploy it.
+#### What it is
+
+Detection Rules contains draft instructions that a security monitoring tool could
+use to alert on selected evidence.
+
+ThreatMesh supports:
+
+- **Sigma**, a portable format for log-detection logic; and
+- **Suricata**, a rule language for network-traffic detection.
+
+#### How it helps
+
+Raw intelligence becomes more useful when a detection engineer can turn it into a
+carefully reviewed monitoring rule. The tab connects the proposed rule to its
+source IOC and provenance so the reviewer can judge it.
+
+#### How it works
+
+1. Feed evidence is normalized and stored.
+2. The deterministic analysis pipeline calculates confidence.
+3. The rule service selects supported and eligible observations.
+4. Normal Python templates create the rule; the LLM does not write the detection
+   decision.
+5. A stable identity prevents the same evidence from producing unrelated rule IDs
+   on every run.
+6. Suricata drafts receive a stable numeric SID.
+7. Values are escaped so source text cannot break the rule structure.
+8. Provenance and `human review required` are stored with the draft.
+
+#### What the tab shows
+
+- rule type, title, and stable ID;
+- source IOC and malware context;
+- confidence band and source references;
+- creation time and review state;
+- the complete rule text; and
+- a download option.
+
+#### Example meaning
+
+A Suricata draft based on a suspicious IP and port means roughly:
+
+```text
+Alert when matching network traffic involves this reviewed IOC identity.
+```
+
+A Sigma draft means roughly:
+
+```text
+Alert when a supported log field contains this reviewed IOC value.
+```
+
+The real downloaded rule uses the exact syntax expected by the target rule format.
+
+#### What a reviewer must do
+
+Before deployment, a detection engineer should:
+
+1. inspect the original evidence and its age;
+2. confirm the rule fields fit local telemetry;
+3. check direction, protocol, and port assumptions;
+4. test with representative logs or traffic;
+5. measure likely false positives;
+6. tune severity and exceptions; and
+7. follow the organization's approval process.
+
+#### What it cannot prove
+
+A generated draft does not prove traffic is malicious, guarantee that a tool will
+accept the rule unchanged, or guarantee zero false positives. Downloading a rule
+does not install, enable, or deploy it.
 
 ### Reports
 
-This page creates and displays an on-demand report for the previous complete week.
+#### What it is
+
+Reports turns structured weekly evidence into a readable CTI document.
+
+#### How it helps
+
+An analyst may need to communicate important observations to a SOC lead, manager,
+or another team. A report summarizes the period without requiring the reader to
+study every IOC row.
+
+#### How it works
+
+1. The user selects the on-demand generation action.
+2. The backend chooses the previous complete weekly period.
+3. Retention cleanup runs before the report query.
+4. Normal SQL and Python code calculate exact counts, top values, techniques,
+   candidate campaigns, and bounded evidence samples.
+5. An empty period stops before an AI request is made.
+6. Gemini, Ollama, or a static provider writes prose from the prepared facts.
+7. The facts, period, provider information, and narrative are stored together.
+8. The report list is refreshed and the selected detail is displayed.
+
+#### What the tab shows
+
+- report title and reporting period;
+- whether data is synthetic demo or live;
+- provider used;
+- executive summary;
+- key findings and recommendations;
+- related evidence links; and
+- a Markdown download.
+
+#### Why it is on demand
+
+The public Vercel deployment is request-driven and should not pretend it owns a
+continuous background worker. Persistent deployments can use the backend scheduler
+or external GCP coordinator, but the hosted interface uses a truthful on-demand
+workflow.
 
 The backend calculates facts, and Gemini or Ollama can write the explanation. Every
 AI-written report requires analyst review.
 
+#### What it cannot prove
+
+Readable AI prose is not automatically correct. The stored deterministic facts and
+evidence links are the stronger source. The report is a draft, not an approved
+intelligence product until a person reviews it.
+
 ### Ask ThreatMesh
 
-This is the natural-language assistant.
+#### What it is
 
-The backend first retrieves a limited set of facts. The model receives those facts,
-writes an answer, and returns citation IDs. The server accepts only IDs that were in
-the retrieved evidence set.
+Ask ThreatMesh is a natural-language way to query supported parts of the stored
+threat corpus.
+
+#### How it helps
+
+A user can ask a plain-English question instead of learning SQL or manually
+combining several screens. Suggested questions demonstrate the kinds of time,
+country, malware-family, campaign, and trend requests the retriever understands.
+
+#### How it works
+
+1. The frontend sends a bounded question to the assistant endpoint.
+2. The backend recognizes supported filters and time phrases.
+3. It retrieves a bounded set of database facts before calling the LLM.
+4. It builds an evidence catalog containing allowed IDs.
+5. The provider returns structured answer text and proposed citations.
+6. The server rejects malformed output and removes citations that were not in the
+   retrieved allow-list.
+7. The UI displays accepted citations as links to exact evidence.
+
+The model cannot execute arbitrary SQL, update the database, change confidence,
+create campaign membership, deploy a rule, or make a blocking decision.
+
+#### What the answer metadata means
+
+- **Retrieved facts:** how much structured evidence supported the request.
+- **Citation:** an exact evidence identity accepted by the server.
+- **Query time:** approximate time spent producing the response.
+- **Integrity warning:** whether citations or provider output needed rejection.
+
+#### What it cannot prove
+
+Citation validation proves an evidence ID was retrieved for that question. It does
+not prove every generated sentence is a perfect logical explanation of the record.
+If the system cannot support a question, it should say so rather than invent an
+answer.
 
 ### Settings
 
-This page explains the current mode, privacy choices, providers, accounts, and
-configuration boundaries. It does not show secret key values.
+#### What it is
+
+Settings is an explanation and status page for runtime mode, external services,
+privacy, and operator choices.
+
+#### How it helps
+
+It tells the user which capabilities depend on a server-side provider and why some
+features may be unavailable. It also explains which data is public, which keys are
+private, and when the local Ollama option is safer.
+
+#### How it works
+
+The page reads safe runtime information and contains configuration guidance. Actual
+secret values remain in backend environment variables or a deployment secret store.
+They are never returned for display.
+
+#### Important boundaries
+
+- `ABUSECH_AUTH_KEY` and `GEMINI_API_KEY` are private backend secrets.
+- `VITE_` values are public because they are included in browser code.
+- a public ArcGIS browser key must be restricted by allowed site and permissions;
+- Gemini should receive only data acceptable under the provider's current terms;
+  and
+- Ollama is the local option for information that must not leave the computer.
+
+#### What it cannot do
+
+Changing explanatory text in the browser does not configure the backend. Real
+provider, database, CORS, and secret settings must be changed in the deployment
+environment and the affected service must be restarted or redeployed.
 
 ## 18. One IOC's complete journey
 
