@@ -199,7 +199,7 @@ export interface ThreatReport {
   recommendations: string[];
   topFamilies: Array<{ name: string; count: number }>;
   relatedCampaignIds: string[];
-  generatedBy: "gemini" | "ollama" | "analyst" | "demo";
+  generatedBy: "gemini" | "openrouter" | "ollama" | "analyst" | "demo";
 }
 
 export type ReportCadence = "weekly" | "monthly";

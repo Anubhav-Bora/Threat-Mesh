@@ -467,7 +467,7 @@ describe("FastAPI client contract", () => {
         period_start: "2026-08-01T00:00:00Z",
         period_end: "2026-08-08T00:00:00Z",
         created_at: "2026-08-08T01:00:00Z",
-        provider: "ollama",
+        provider: "openrouter",
         is_demo: false,
         model: "local",
         report_text: reportText,
@@ -486,7 +486,7 @@ describe("FastAPI client contract", () => {
       recommendations: ["Validate the candidate."],
       relatedCampaignIds: ["9"],
       topFamilies: [{ name: "Example", count: 3 }],
-      generatedBy: "ollama",
+      generatedBy: "openrouter",
       status: "generated",
       isDemo: false,
     });

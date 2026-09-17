@@ -14,6 +14,7 @@ from app.attack_mapping import AttackMappingService
 from app.config import Settings, get_settings
 from app.database import Database
 from app.errors import AppError, install_error_handlers
+from app.genai import provider_is_configured
 from app.logging import configure_logging
 from app.middleware import (
     PublicRateLimitMiddleware,
@@ -111,8 +112,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 details={"reason": str(exc)[:200]} if resolved.debug else None,
             ) from exc
         ai_provider = resolved.llm_provider.lower()
-        ai_configured = ai_provider == "ollama" or (
-            ai_provider == "gemini" and bool(resolved.gemini_api_key)
+        fallback_provider = resolved.llm_fallback_provider.lower()
+        ai_configured = provider_is_configured(ai_provider, resolved) or provider_is_configured(
+            fallback_provider, resolved
         )
         return {
             "status": "ready",
@@ -125,7 +127,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if resolved.external_scheduler_enabled
                 else "disabled"
             ),
-            "ai": {"provider": ai_provider, "configured": ai_configured},
+            "ai": {
+                "provider": ai_provider,
+                "fallback_provider": fallback_provider,
+                "configured": ai_configured,
+            },
         }
 
     app.include_router(health_router)

@@ -239,6 +239,64 @@ export default function SettingsPage() {
               <Cloud size={20} />
             </span>
             <div>
+              <span className="eyebrow">Optional cloud fallback</span>
+              <h2>OpenRouter</h2>
+            </div>
+          </div>
+          <p>
+            OpenRouter can route public OSINT prompts to another model when the
+            primary provider has a temporary failure. Free models are
+            best-effort and do not guarantee continuous availability.
+          </p>
+          <div className="env-block">
+            <div>
+              <code>LLM_FALLBACK_PROVIDER=openrouter</code>
+              <Copy size={13} />
+            </div>
+            <div>
+              <code>OPENROUTER_MODEL=openrouter/free</code>
+              <Copy size={13} />
+            </div>
+          </div>
+          <ol className="compact-steps">
+            <li>
+              <span>1</span>
+              <p>Create an OpenRouter account and API key.</p>
+            </li>
+            <li>
+              <span>2</span>
+              <p>
+                Store it as <code>OPENROUTER_API_KEY</code> only on the backend.
+              </p>
+            </li>
+            <li>
+              <span>3</span>
+              <p>
+                Keep <code>LLM_PROVIDER=gemini</code> and explicitly enable the
+                fallback shown above, then restart or redeploy the backend.
+              </p>
+            </li>
+          </ol>
+          <a
+            className="button button--ghost"
+            href="https://openrouter.ai/keys"
+            target="_blank"
+            rel="noreferrer"
+          >
+            OpenRouter keys <ExternalLink size={14} />
+          </a>
+          <div className="privacy-inline">
+            <LockKeyhole size={15} />A fallback sends the same prompt to another
+            cloud provider. Use public OSINT only.
+          </div>
+        </section>
+
+        <section className="panel setup-card">
+          <div className="setup-card__head">
+            <span className="setup-icon setup-icon--ai">
+              <Cloud size={20} />
+            </span>
+            <div>
               <span className="eyebrow">Backend integration</span>
               <h2>Gemini report writer</h2>
             </div>

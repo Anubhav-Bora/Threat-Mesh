@@ -112,7 +112,10 @@ const normalizeReportProvider = (
   value: unknown,
 ): ThreatReport["generatedBy"] => {
   const provider = safeString(value, "analyst").toLowerCase();
-  return provider === "gemini" || provider === "ollama" || provider === "demo"
+  return provider === "gemini" ||
+    provider === "openrouter" ||
+    provider === "ollama" ||
+    provider === "demo"
     ? provider
     : "analyst";
 };

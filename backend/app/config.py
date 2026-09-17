@@ -68,9 +68,15 @@ class Settings(BaseSettings):
     minimum_rule_confidence: float = Field(default=70.0, ge=0, le=100)
 
     llm_provider: str = "disabled"
+    llm_fallback_provider: str = "disabled"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash-lite"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "openrouter/free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_site_url: str | None = None
+    openrouter_app_name: str = "ThreatMesh"
     ollama_base_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "llama3.1:8b"
     llm_timeout_seconds: float = Field(default=75.0, gt=0)

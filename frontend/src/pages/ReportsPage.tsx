@@ -119,7 +119,9 @@ export default function ReportsPage() {
     ? (detailQuery.data?.data ?? undefined)
     : selectedSummary;
   const isAiGenerated =
-    report?.generatedBy === "gemini" || report?.generatedBy === "ollama";
+    report?.generatedBy === "gemini" ||
+    report?.generatedBy === "openrouter" ||
+    report?.generatedBy === "ollama";
 
   if (query.isLoading)
     return (

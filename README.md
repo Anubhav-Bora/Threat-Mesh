@@ -19,8 +19,6 @@ The useful security work is deterministic. Gemini or a local Ollama model can
 write a report and phrase retrieval-backed answers, but neither provider can
 change confidence, technique mapping, clustering, or response decisions.
 
-![ThreatMesh geospatial analyst dashboard](docs/assets/dashboard.png)
-
 ## What is included
 
 | Capability | Implementation |
@@ -29,7 +27,7 @@ change confidence, technique mapping, clustering, or response decisions.
 | Geospatial context | Cached backend-only IP/ASN enrichment, PostGIS geography points, clustering, heatmap, and illustrative geodesic uncertainty views |
 | Intelligence analysis | Versioned confidence snapshots with per-signal evidence, ATT&CK STIX catalog/mapping, and graph-based Louvain campaign candidates |
 | Detection engineering | Stable Sigma and Suricata templates with provenance and mandatory human-review labeling |
-| Analyst reporting | On-demand, evidence-bounded weekly CTI reports with configurable Gemini, local Ollama, or no-LLM operation |
+| Analyst reporting | On-demand, evidence-bounded weekly CTI reports with configurable Gemini, explicit OpenRouter fallback, local Ollama, or no-LLM operation |
 | Natural-language access | Retrieval-first assistant with server-validated evidence IDs, forged-citation rejection, and exact record pivots instead of unrestricted text-to-SQL |
 | Operations | Embedded or external scheduled jobs, health/readiness probes, audit-friendly feed runs, rate limits, admin-key protection, Alembic migrations, and deterministic demo seeding |
 | Portfolio UX | Responsive React/TypeScript console with overview, bulk investigation, indicators, campaigns, ATT&CK, rules, reports, assistant, and settings workspaces |
@@ -51,13 +49,9 @@ flowchart LR
     LLM --> API
 ```
 
-Start with [ThreatMesh explained in very simple English](docs/BEGINNER_GUIDE.md),
-then use the [project and interview guide](docs/PROJECT_GUIDE.md) or the
-[file-by-file codebase guide](docs/CODEBASE_GUIDE.md). The detailed
-[architecture](docs/architecture.md), [methodology](docs/methodology.md),
-[operations guide](docs/operations.md), and
-[architecture decisions](docs/decisions/) describe trust boundaries and the
-trade-offs behind the design.
+Local learning and interview notes are kept under `docs/` and intentionally
+ignored by Git. The public README contains the supported setup, architecture,
+safety, and deployment contract.
 
 The included deployment templates support a full stack Vercel layout:
 Vercel-hosted frontend (`frontend/`) and Vercel-hosted FastAPI backend (`backend/`)
@@ -117,21 +111,28 @@ volume; `docker compose down -v` intentionally removes it.
 | abuse.ch Auth-Key | URLhaus and ThreatFox collection | Free, required for current APIs |
 | ArcGIS Location Platform | Optional future premium location services | Browser key optional; the public ArcGIS World Imagery map works without one |
 | Google AI Studio | Gemini report/assistant prose | Free-tier backend key, optional |
+| OpenRouter | Best-effort cloud model fallback | Free account and backend key, optional; free models have low limits |
 | Ollama | Local report/assistant prose | No account, optional local install |
 | Feodo Tracker | Feodo collection | None |
 | ip-api | Non-commercial demo geolocation | None; HTTP-only free endpoint |
 | MITRE ATT&CK | Technique catalog | None |
 
-Follow [external service setup](docs/api-accounts.md) for current signup steps,
-key restrictions, free-tier limitations, and data-use notes. Two details are
-easy to miss:
+Use each provider's current account portal for signup, key restrictions,
+free-tier limitations, and data-use terms. Three details are easy to miss:
 
 - `ABUSECH_AUTH_KEY` and `GEMINI_API_KEY` are server secrets.
+- `OPENROUTER_API_KEY` is also a server secret; `openrouter/free` is a
+  best-effort, rate-limited fallback rather than an uptime guarantee.
 - `VITE_ARCGIS_API_KEY` is visible in the built browser app by design. Restrict
   it by allowed referrers, service privileges, and expiry in the ArcGIS portal.
 - Google's current Gemini terms allow free-tier inputs and outputs to be used
   to improve its products, including human review. Send only public OSINT or
   use the local Ollama option; recheck the terms before deployment.
+
+For an explicit public-OSINT fallback, keep `LLM_PROVIDER=gemini` and set
+`LLM_FALLBACK_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and
+`OPENROUTER_MODEL=openrouter/free`. A fallback can improve availability but no
+free cloud service can promise that generation will always succeed.
 
 After editing `.env`, rebuild affected services:
 
@@ -270,7 +271,7 @@ backend/
   tests/              network-free behavioral tests
 frontend/
   src/                analyst workspaces, map, charts, and API client
-docs/                  architecture, methodology, setup, and decisions
+docs/                  local learning notes (ignored by Git)
 reports/               local report exports (ignored by Git)
 rules/                 local detection exports (ignored by Git)
 ```

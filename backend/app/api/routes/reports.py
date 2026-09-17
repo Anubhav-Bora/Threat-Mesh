@@ -13,7 +13,7 @@ from app.api.schemas import (
     UpdateReportScheduleRequest,
 )
 from app.errors import AppError
-from app.genai import ReportService, build_provider
+from app.genai import ReportService, build_provider, provider_is_configured
 from app.maintenance import DataRetentionService
 from app.models import Report, ReportSchedule
 from app.models.enums import ReportCadence
@@ -32,8 +32,9 @@ async def list_reports(session: SessionDep) -> list[ReportSummary]:
 
 def _provider_configured(request: Request) -> bool:
     settings = request.app.state.settings
-    provider = settings.llm_provider.lower()
-    return provider == "ollama" or (provider == "gemini" and bool(settings.gemini_api_key))
+    return provider_is_configured(settings.llm_provider, settings) or provider_is_configured(
+        settings.llm_fallback_provider, settings
+    )
 
 
 def _schedule_response(request: Request, schedule: ReportSchedule) -> ReportScheduleResponse:
