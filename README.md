@@ -51,8 +51,10 @@ flowchart LR
     LLM --> API
 ```
 
-The detailed [architecture](docs/architecture.md),
-[methodology](docs/methodology.md), [operations guide](docs/operations.md), and
+Start with the plain-English [project and interview guide](docs/PROJECT_GUIDE.md)
+or the [file-by-file codebase guide](docs/CODEBASE_GUIDE.md). The detailed
+[architecture](docs/architecture.md), [methodology](docs/methodology.md),
+[operations guide](docs/operations.md), and
 [architecture decisions](docs/decisions/) describe trust boundaries and the
 trade-offs behind the design.
 
