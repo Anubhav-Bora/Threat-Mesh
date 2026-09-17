@@ -51,8 +51,9 @@ flowchart LR
     LLM --> API
 ```
 
-Start with the plain-English [project and interview guide](docs/PROJECT_GUIDE.md)
-or the [file-by-file codebase guide](docs/CODEBASE_GUIDE.md). The detailed
+Start with [ThreatMesh explained in very simple English](docs/BEGINNER_GUIDE.md),
+then use the [project and interview guide](docs/PROJECT_GUIDE.md) or the
+[file-by-file codebase guide](docs/CODEBASE_GUIDE.md). The detailed
 [architecture](docs/architecture.md), [methodology](docs/methodology.md),
 [operations guide](docs/operations.md), and
 [architecture decisions](docs/decisions/) describe trust boundaries and the

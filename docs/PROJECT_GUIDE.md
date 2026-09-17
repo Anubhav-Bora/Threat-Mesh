@@ -1,5 +1,10 @@
 # ThreatMesh Project Guide and Interview Handbook
 
+New to cyber security or programming? Read
+[ThreatMesh Explained in Very Simple English](BEGINNER_GUIDE.md) first. It defines
+terms such as IOC, campaign, confidence, ATT&CK, provenance, API, and RAG with
+everyday examples.
+
 ## Project title
 
 **ThreatMesh: An Evidence-Grounded Cyber Threat Intelligence and Investigation Platform**

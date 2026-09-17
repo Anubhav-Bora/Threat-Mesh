@@ -1,8 +1,9 @@
 # ThreatMesh Codebase Guide
 
-This guide explains the repository in simple English. Read
-[PROJECT_GUIDE.md](PROJECT_GUIDE.md) first for the product story, then use this
-file to understand where each behavior is implemented.
+This guide explains where each behavior is implemented. If the technical words are
+new, begin with [BEGINNER_GUIDE.md](BEGINNER_GUIDE.md). Then read
+[PROJECT_GUIDE.md](PROJECT_GUIDE.md) for the professional product story before
+using this file as a code map.
 
 ## 1. The simplest mental model
 
@@ -431,6 +432,7 @@ Never commit provider keys. Use Vercel environment variables or GCP Secret Manag
 
 | File | Purpose |
 |---|---|
+| `docs/BEGINNER_GUIDE.md` | Explains the complete project from zero using everyday examples and defines its cyber-security, analysis, AI, code, testing, and deployment vocabulary. |
 | `docs/PROJECT_GUIDE.md` | Plain-English project story, research, architecture, value, limitations, roadmap, and interview preparation. |
 | `docs/CODEBASE_GUIDE.md` | This file-by-file code map. |
 | `docs/architecture.md` | Formal component boundaries, trust zones, and deployment topology. |
