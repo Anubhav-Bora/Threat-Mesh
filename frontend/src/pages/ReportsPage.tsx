@@ -15,7 +15,12 @@ import { Badge, EmptyState, SkeletonRows } from "../components/UI";
 import { useReport, useReports } from "../hooks/useThreatData";
 import type { ThreatReport } from "../types";
 import { markSyntheticArtifact } from "../utils/artifacts";
-import { downloadText, formatDate, formatIsoUtc } from "../utils/format";
+import {
+  downloadText,
+  formatDate,
+  formatIsoUtc,
+  formatUtcDateTime,
+} from "../utils/format";
 
 function ManualReportPanel({
   onReportGenerated,
@@ -194,6 +199,7 @@ export default function ReportsPage() {
                   {report.cadence === "weekly" ? "Weekly" : "Monthly"} draft ·
                   review required
                 </small>
+                <small>Created {formatUtcDateTime(report.createdAt)}</small>
                 {report.isDemo && <small>Synthetic demo evidence</small>}
               </div>
               <ChevronRight size={16} />
