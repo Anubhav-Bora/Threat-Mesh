@@ -4568,6 +4568,33 @@ input[type="range"] {
   background: #202a34;
   cursor: default;
 }
+.chat-composer > .assistant-mode-switch {
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.chat-composer .assistant-mode-switch button {
+  display: inline-flex;
+  width: auto;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #8291a2;
+  background: transparent;
+  font-size: 7.5px;
+  font-weight: 700;
+}
+.chat-composer .assistant-mode-switch button:hover:not(:disabled) {
+  color: #c9fff8;
+  background: rgb(110 231 216 / 6%);
+}
+.chat-composer .assistant-mode-switch button.is-active {
+  border-color: rgb(110 231 216 / 24%);
+  color: var(--teal);
+  background: rgb(110 231 216 / 10%);
+}
 .assistant-sidebar {
   display: grid;
   gap: 12px;

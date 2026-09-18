@@ -137,8 +137,9 @@ views can page live data without synthetic rows occupying the bounded result win
 - `GET /api/v1/rules`, `POST /api/v1/rules/generate`, rule download
 - `GET /api/v1/reports`, Markdown download
 - `GET|PUT /api/v1/reports/schedule` — inspect or securely change weekly/monthly cadence
-- `POST /api/v1/reports/generate` — manually generate a complete weekly report
-- `POST /api/v1/assistant/ask` — constrained retrieval first, prose generation second
+- `POST /api/v1/reports/generate` — generate and persist a distinct on-demand weekly snapshot
+- `POST /api/v1/assistant/ask` — Auto/Threat data/General assistant with bounded chat history;
+  Threat data responses retain constrained retrieval and server-validated citations
 - `POST /api/v1/feeds/sync`, `/enrichment/run`, `/analysis/run`
 
 IOC resources expose `is_demo`; the summary endpoint reports `demo_iocs`, `live_iocs`, and an

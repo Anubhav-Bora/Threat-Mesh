@@ -32,6 +32,7 @@ class ReportService:
         period_start: datetime | None = None,
         period_end: datetime | None = None,
         cadence: ReportCadence = ReportCadence.WEEKLY,
+        idempotent: bool = True,
     ) -> Report:
         end = _utc(period_end or datetime.now(UTC))
         start = _utc(period_start or (end - timedelta(days=7)))
@@ -48,18 +49,23 @@ class ReportService:
                     "period_end": end.isoformat(),
                 },
             )
-        schedule_key = report_schedule_key(
-            cadence,
-            start,
-            end,
-            is_demo=facts["analysis_scope"] == "demo",
-        )
-        async with self.session_factory() as session:
-            existing = await session.scalar(
-                select(Report).where(Report.schedule_key == schedule_key)
+        schedule_key = (
+            report_schedule_key(
+                cadence,
+                start,
+                end,
+                is_demo=facts["analysis_scope"] == "demo",
             )
-            if existing is not None:
-                return existing
+            if idempotent
+            else None
+        )
+        if schedule_key is not None:
+            async with self.session_factory() as session:
+                existing = await session.scalar(
+                    select(Report).where(Report.schedule_key == schedule_key)
+                )
+                if existing is not None:
+                    return existing
         facts["report_cadence"] = cadence.value
         prompt = (
             "Reporting period (UTC): "
@@ -89,6 +95,8 @@ class ReportService:
                 # Cloud job retries can race. The stable period key makes the
                 # operation idempotent without trusting process-local locks.
                 await session.rollback()
+                if schedule_key is None:
+                    raise
                 existing = await session.scalar(
                     select(Report).where(Report.schedule_key == schedule_key)
                 )

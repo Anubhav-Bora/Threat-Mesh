@@ -297,8 +297,16 @@ export interface CitationIntegrity {
   rejectedCount: number;
 }
 
+export type AssistantMode = "auto" | "threatmesh" | "general";
+
+export interface AssistantHistoryItem {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface AssistantAnswer {
   answer: string;
+  answerMode: "threatmesh" | "general";
   citations: AssistantCitation[];
   retrievedCount: number;
   queryTimeMs: number;
@@ -311,6 +319,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  answerMode?: "threatmesh" | "general";
   citations?: AssistantCitation[];
   retrievedCount?: number;
   queryTimeMs?: number;

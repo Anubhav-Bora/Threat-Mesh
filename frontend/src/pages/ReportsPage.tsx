@@ -20,7 +20,7 @@ import { downloadText, formatDate, formatIsoUtc } from "../utils/format";
 function ManualReportPanel({
   onReportGenerated,
 }: {
-  onReportGenerated?: (reportId: string) => Promise<void> | void;
+  onReportGenerated?: (report: ThreatReport) => Promise<void> | void;
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +32,8 @@ function ManualReportPanel({
     setNotice(null);
     try {
       const generated = await threatApi.generateWeeklyReport();
-      setNotice("Generated " + generated.data.title + ".");
-      if (onReportGenerated) await onReportGenerated(generated.data.id);
+      setNotice("Generated and opened " + generated.data.title + ".");
+      if (onReportGenerated) await onReportGenerated(generated.data);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -102,7 +102,13 @@ export default function ReportsPage() {
   const [searchParams] = useSearchParams();
   const citedReportId = searchParams.get("report");
   const query = useReports();
-  const reports = query.data?.data ?? [];
+  const serverReports = query.data?.data ?? [];
+  const [generatedReports, setGeneratedReports] = useState<ThreatReport[]>([]);
+  const generatedIds = new Set(generatedReports.map((report) => report.id));
+  const reports = [
+    ...generatedReports,
+    ...serverReports.filter((report) => !generatedIds.has(report.id)),
+  ];
   const [selectedId, setSelectedId] = useState<string | null>(citedReportId);
   useEffect(() => {
     setSelectedId(citedReportId);
@@ -112,12 +118,17 @@ export default function ReportsPage() {
       ? reports[0]
       : reports.find((report) => report.id === selectedId);
   const resolvedReportId = selectedId ?? selectedSummary?.id;
+  const generatedReport = generatedReports.find(
+    (candidate) => candidate.id === resolvedReportId,
+  );
   const requiresDetail =
-    query.data?.mode === "live" && Boolean(resolvedReportId);
+    query.data?.mode === "live" &&
+    Boolean(resolvedReportId) &&
+    !generatedReport;
   const detailQuery = useReport(requiresDetail ? resolvedReportId : undefined);
-  const report = requiresDetail
-    ? (detailQuery.data?.data ?? undefined)
-    : selectedSummary;
+  const report =
+    generatedReport ??
+    (requiresDetail ? (detailQuery.data?.data ?? undefined) : selectedSummary);
   const isAiGenerated =
     report?.generatedBy === "gemini" ||
     report?.generatedBy === "openrouter" ||
@@ -148,9 +159,13 @@ export default function ReportsPage() {
           </div>
         </div>
         <ManualReportPanel
-          onReportGenerated={async (reportId: string) => {
+          onReportGenerated={async (generatedReport: ThreatReport) => {
+            setGeneratedReports((current) => [
+              generatedReport,
+              ...current.filter((report) => report.id !== generatedReport.id),
+            ]);
+            setSelectedId(generatedReport.id);
             await query.refetch();
-            setSelectedId(reportId);
           }}
         />
         <div className="report-list">

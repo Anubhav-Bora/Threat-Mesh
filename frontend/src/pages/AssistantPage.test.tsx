@@ -49,6 +49,7 @@ describe("AssistantPage", () => {
     askMock.mockResolvedValue({
       data: {
         answer: "One grounded observation was retrieved.",
+        answerMode: "threatmesh",
         citations: [],
         retrievedCount: 1,
         queryTimeMs: 12,
@@ -107,6 +108,48 @@ describe("AssistantPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: "Question for ThreatMesh" }),
+    ).toBeInTheDocument();
+  });
+
+  it("supports explicit general mode and sends bounded conversation context", async () => {
+    askMock.mockResolvedValueOnce({
+      data: {
+        answer: "Paris is the capital of France.",
+        answerMode: "general",
+        citations: [],
+        retrievedCount: 0,
+        queryTimeMs: 10,
+        includedProvenance: "none",
+      },
+      mode: "live",
+    });
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <AssistantPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "General" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Question for ThreatMesh" }),
+      { target: { value: "What is the capital of France?" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send question" }));
+
+    await waitFor(() =>
+      expect(askMock).toHaveBeenCalledWith("What is the capital of France?", {
+        mode: "general",
+        history: [],
+      }),
+    );
+    expect(
+      await screen.findByText("Paris is the capital of France."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("General knowledge · no live records used"),
     ).toBeInTheDocument();
   });
 

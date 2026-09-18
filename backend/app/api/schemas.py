@@ -326,10 +326,22 @@ class ReportScheduleResponse(BaseModel):
     admin_auth_required: bool
 
 
+class AssistantHistoryItem(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        return " ".join(value.split())
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
     date_from: datetime | None = None
     date_to: datetime | None = None
+    mode: Literal["auto", "threatmesh", "general"] = "auto"
+    history: list[AssistantHistoryItem] = Field(default_factory=list, max_length=8)
 
     @field_validator("date_from", "date_to")
     @classmethod
@@ -369,12 +381,14 @@ class AskResponse(BaseModel):
     answer: str
     provider: str
     model: str
+    response_mode: Literal["threatmesh", "general"]
     grounded_facts: dict[str, Any]
     citations: list[AssistantCitation] = Field(default_factory=list)
     citation_integrity: CitationIntegrity
     disclaimer: str = (
         "Citation IDs are server-validated against this response's retrieved facts. "
-        "Generated wording and claim support still require analyst review."
+        "General-mode answers use model knowledge and may not be current; generated wording "
+        "and claim support still require appropriate review."
     )
 
 

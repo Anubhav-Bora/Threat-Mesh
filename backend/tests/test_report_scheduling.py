@@ -172,6 +172,7 @@ async def test_manual_weekly_report_generation_and_retention_cleanup(
     assert response.status_code == 200
     body = response.json()
     assert body["cadence"] == "weekly"
+    assert body["report_text"] == "Manual report"
     assert datetime.fromisoformat(body["period_end"]) - datetime.fromisoformat(
         body["period_start"]
     ) == timedelta(days=7)
@@ -182,6 +183,29 @@ async def test_manual_weekly_report_generation_and_retention_cleanup(
         assert await session.scalar(select(func.count(Report.id))) == 1
         assert await session.scalar(select(func.count(FeedRun.id))) == 0
         assert await session.scalar(select(func.count(GeoCache.ip_address))) == 0
+
+
+@pytest.mark.asyncio
+async def test_on_demand_reports_keep_distinct_snapshots(app) -> None:
+    observed = make_ioc(value="8.8.8.8")
+    observed.first_seen = datetime(2026, 8, 25, tzinfo=UTC)
+    observed.last_seen = datetime(2026, 8, 30, tzinfo=UTC)
+    async with app.state.database.session_factory() as session:
+        session.add(observed)
+        await session.commit()
+
+    service = ReportService(app.state.database.session_factory, StaticProvider("Snapshot"))
+    period = {
+        "period_start": datetime(2026, 8, 24, tzinfo=UTC),
+        "period_end": datetime(2026, 8, 31, tzinfo=UTC),
+        "idempotent": False,
+    }
+    first = await service.generate(**period)
+    second = await service.generate(**period)
+
+    assert first.id != second.id
+    async with app.state.database.session_factory() as session:
+        assert await session.scalar(select(func.count(Report.id))) == 2
 
 
 @pytest.mark.asyncio

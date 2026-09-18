@@ -19,13 +19,18 @@ import { useNavigate } from "react-router-dom";
 import { threatApi } from "../api/client";
 import { Badge } from "../components/UI";
 import { useApiMode, useSummary } from "../hooks/useThreatData";
-import type { AssistantCitation, ChatMessage } from "../types";
+import type {
+  AssistantCitation,
+  AssistantHistoryItem,
+  AssistantMode,
+  ChatMessage,
+} from "../types";
 
 const suggestions = [
   "Which campaigns have the highest average IOC confidence?",
   "What are the most observed ATT&CK techniques in the last 7 days?",
   "Where is recent infrastructure concentrated?",
-  "What are the top malware families this month?",
+  "Explain zero trust in simple terms.",
 ];
 
 const greeting: ChatMessage = {
@@ -33,12 +38,13 @@ const greeting: ChatMessage = {
   role: "assistant",
   createdAt: new Date().toISOString(),
   content:
-    "Ask me about indicators, campaign relationships, ATT&CK techniques, or reporting trends. I retrieve matching ThreatMesh records first, then compose an answer using only that evidence.",
+    "Ask about ThreatMesh evidence, this project's design, cybersecurity concepts, or any general topic. Auto mode retrieves evidence when your question is about ThreatMesh data and uses general knowledge otherwise.",
 };
 
 export default function AssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([greeting]);
   const [question, setQuestion] = useState("");
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("auto");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -60,7 +66,15 @@ export default function AssistantPage() {
               ? "Live feed corpus"
               : "API corpus";
   const ask = useMutation({
-    mutationFn: threatApi.ask,
+    mutationFn: (input: {
+      question: string;
+      mode: AssistantMode;
+      history: AssistantHistoryItem[];
+    }) =>
+      threatApi.ask(input.question, {
+        mode: input.mode,
+        history: input.history,
+      }),
     onSuccess: (result) => {
       setMessages((items) => [
         ...items,
@@ -69,6 +83,7 @@ export default function AssistantPage() {
           role: "assistant",
           content: result.data.answer,
           createdAt: new Date().toISOString(),
+          answerMode: result.data.answerMode,
           citations: result.data.citations,
           retrievedCount: result.data.retrievedCount,
           queryTimeMs: result.data.queryTimeMs,
@@ -84,7 +99,7 @@ export default function AssistantPage() {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           content:
-            "The retrieval service could not complete this query. No answer was generated because ThreatMesh does not respond without evidence.",
+            "The AI service could not complete this request. Try again, or switch between General and Threat data mode if the provider misunderstood the request.",
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -102,6 +117,13 @@ export default function AssistantPage() {
     event?.preventDefault();
     const content = (suggested ?? question).trim();
     if (!content || ask.isPending) return;
+    const history = messages
+      .filter((message) => message.id !== "welcome")
+      .slice(-8)
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
     setMessages((items) => [
       ...items,
       {
@@ -112,7 +134,7 @@ export default function AssistantPage() {
       },
     ]);
     setQuestion("");
-    ask.mutate(content);
+    ask.mutate({ question: content, mode: assistantMode, history });
   };
 
   return (
@@ -125,7 +147,7 @@ export default function AssistantPage() {
           </div>
           <div>
             <strong>ThreatMesh analyst assistant</strong>
-            <span>Retrieval first · generation second</span>
+            <span>Grounded threat intelligence · general AI assistance</span>
           </div>
           <Badge
             tone={
@@ -219,47 +241,54 @@ export default function AssistantPage() {
                 {message.retrievedCount !== undefined && (
                   <div className="answer-meta">
                     <span>
-                      <CheckCircle2 size={12} />
-                      Grounded in {message.retrievedCount} retrieved record
-                      {message.retrievedCount === 1 ? "" : "s"}
+                      {message.answerMode === "general" ? (
+                        <Sparkles size={12} />
+                      ) : (
+                        <CheckCircle2 size={12} />
+                      )}
+                      {message.answerMode === "general"
+                        ? "General knowledge · no live records used"
+                        : `Grounded in ${message.retrievedCount} retrieved record${message.retrievedCount === 1 ? "" : "s"}`}
                     </span>
                     <span>
                       <Clock3 size={12} />
                       {message.queryTimeMs} ms
                     </span>
-                    {message.includedProvenance && (
-                      <span>
-                        <Database size={12} />
-                        {message.includedProvenance === "demo"
-                          ? "Synthetic demo evidence"
-                          : message.includedProvenance === "live"
-                            ? "Live-feed evidence"
-                            : "No evidence included"}
-                      </span>
-                    )}
-                    {message.citationIntegrity && (
-                      <span
-                        className={`citation-status citation-status--${message.citationIntegrity.status}`}
-                      >
-                        {message.citationIntegrity.status === "verified" ? (
-                          <ShieldCheck size={12} />
-                        ) : message.citationIntegrity.status === "partial" ||
-                          message.citationIntegrity.rejectedCount > 0 ? (
-                          <AlertTriangle size={12} />
-                        ) : (
-                          <LockKeyhole size={12} />
-                        )}
-                        {message.citationIntegrity.status === "verified"
-                          ? `${message.citationIntegrity.validatedCount} citation ID${message.citationIntegrity.validatedCount === 1 ? "" : "s"} verified`
-                          : message.citationIntegrity.status === "partial"
-                            ? message.citationIntegrity.rejectedCount > 0
-                              ? `${message.citationIntegrity.validatedCount} valid · ${message.citationIntegrity.rejectedCount} rejected`
-                              : `${message.citationIntegrity.validatedCount} valid · citation set mismatch`
-                            : message.citationIntegrity.rejectedCount > 0
-                              ? `0 valid · ${message.citationIntegrity.rejectedCount} rejected`
-                              : "No citation IDs returned"}
-                      </span>
-                    )}
+                    {message.answerMode !== "general" &&
+                      message.includedProvenance && (
+                        <span>
+                          <Database size={12} />
+                          {message.includedProvenance === "demo"
+                            ? "Synthetic demo evidence"
+                            : message.includedProvenance === "live"
+                              ? "Live-feed evidence"
+                              : "No evidence included"}
+                        </span>
+                      )}
+                    {message.answerMode !== "general" &&
+                      message.citationIntegrity && (
+                        <span
+                          className={`citation-status citation-status--${message.citationIntegrity.status}`}
+                        >
+                          {message.citationIntegrity.status === "verified" ? (
+                            <ShieldCheck size={12} />
+                          ) : message.citationIntegrity.status === "partial" ||
+                            message.citationIntegrity.rejectedCount > 0 ? (
+                            <AlertTriangle size={12} />
+                          ) : (
+                            <LockKeyhole size={12} />
+                          )}
+                          {message.citationIntegrity.status === "verified"
+                            ? `${message.citationIntegrity.validatedCount} citation ID${message.citationIntegrity.validatedCount === 1 ? "" : "s"} verified`
+                            : message.citationIntegrity.status === "partial"
+                              ? message.citationIntegrity.rejectedCount > 0
+                                ? `${message.citationIntegrity.validatedCount} valid · ${message.citationIntegrity.rejectedCount} rejected`
+                                : `${message.citationIntegrity.validatedCount} valid · citation set mismatch`
+                              : message.citationIntegrity.rejectedCount > 0
+                                ? `0 valid · ${message.citationIntegrity.rejectedCount} rejected`
+                                : "No citation IDs returned"}
+                        </span>
+                      )}
                   </div>
                 )}
               </div>
@@ -280,7 +309,11 @@ export default function AssistantPage() {
                     <i />
                     <i />
                   </span>
-                  <span>Retrieving matching evidence…</span>
+                  <span>
+                    {assistantMode === "general"
+                      ? "Thinking…"
+                      : "Retrieving context and composing…"}
+                  </span>
                 </div>
               </div>
             </article>
@@ -300,6 +333,30 @@ export default function AssistantPage() {
           ))}
         </div>
         <form className="chat-composer" onSubmit={submit}>
+          <div
+            className="assistant-mode-switch"
+            role="group"
+            aria-label="Assistant answer mode"
+          >
+            {(
+              [
+                ["auto", "Auto"],
+                ["threatmesh", "Threat data"],
+                ["general", "General"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={assistantMode === value ? "is-active" : ""}
+                aria-pressed={assistantMode === value}
+                disabled={ask.isPending}
+                onClick={() => setAssistantMode(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <textarea
             ref={inputRef}
             value={question}
@@ -310,14 +367,24 @@ export default function AssistantPage() {
                 submit();
               }
             }}
-            placeholder="Ask a question about your threat data…"
+            placeholder={
+              assistantMode === "general"
+                ? "Ask anything…"
+                : assistantMode === "threatmesh"
+                  ? "Ask about ThreatMesh evidence or the project…"
+                  : "Ask about ThreatMesh or anything else…"
+            }
             rows={2}
             aria-label="Question for ThreatMesh"
           />
           <div>
             <span>
               <ShieldCheck size={13} />
-              Retrieved context · analyst review required
+              {assistantMode === "general"
+                ? "General model knowledge · verify important answers"
+                : assistantMode === "threatmesh"
+                  ? "Retrieved project context · analyst review required"
+                  : "Automatic routing · mode shown on every answer"}
             </span>
             <button
               type="submit"
@@ -332,16 +399,16 @@ export default function AssistantPage() {
 
       <aside className="assistant-sidebar">
         <section className="panel retrieval-card">
-          <span className="eyebrow">How this answer is built</span>
-          <h2>Evidence pipeline</h2>
+          <span className="eyebrow">How answers are built</span>
+          <h2>Hybrid assistant</h2>
           <ol>
             <li>
               <span>
                 <Search size={17} />
               </span>
               <div>
-                <strong>Interpret the question</strong>
-                <small>Constrained intent and entity matching</small>
+                <strong>Choose an answer mode</strong>
+                <small>Auto, Threat data, or General</small>
               </div>
             </li>
             <li>
@@ -349,8 +416,8 @@ export default function AssistantPage() {
                 <Database size={17} />
               </span>
               <div>
-                <strong>Retrieve records</strong>
-                <small>Postgres facts before model context</small>
+                <strong>Add the right context</strong>
+                <small>Project context always; records only when needed</small>
               </div>
             </li>
             <li>
@@ -358,8 +425,8 @@ export default function AssistantPage() {
                 <Braces size={17} />
               </span>
               <div>
-                <strong>Structure evidence</strong>
-                <small>Allow-listed IDs, counts, dates, and provenance</small>
+                <strong>Protect evidence claims</strong>
+                <small>Allow-listed IDs, dates, counts, and provenance</small>
               </div>
             </li>
             <li>
@@ -367,8 +434,8 @@ export default function AssistantPage() {
                 <Sparkles size={17} />
               </span>
               <div>
-                <strong>Compose from facts</strong>
-                <small>Generated wording remains review-gated</small>
+                <strong>Continue the conversation</strong>
+                <small>Up to eight recent messages provide context</small>
               </div>
             </li>
           </ol>
@@ -379,15 +446,16 @@ export default function AssistantPage() {
           <ul>
             <li>No direct database write access</li>
             <li>No autonomous security decisions</li>
-            <li>Responses are constrained to retrieved context</li>
+            <li>Live-data claims require retrieved context</li>
+            <li>General answers are visibly labelled</li>
             <li>Displayed citation IDs are server validated</li>
           </ul>
         </section>
         <section className="panel assistant-tips">
           <span className="eyebrow">Query tips</span>
           <p>
-            Include a time window, IOC type, malware family, or country for a
-            narrower retrieval set.
+            Use Threat data for strict evidence retrieval, General for ordinary
+            questions, or Auto to let ThreatMesh choose.
           </p>
           <code>“Show QakBot domains observed this week.”</code>
         </section>

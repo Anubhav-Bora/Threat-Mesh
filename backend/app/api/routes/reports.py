@@ -23,7 +23,8 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.get("", response_model=list[ReportSummary])
-async def list_reports(session: SessionDep) -> list[ReportSummary]:
+async def list_reports(session: SessionDep, response: Response) -> list[ReportSummary]:
+    response.headers["Cache-Control"] = "no-store"
     reports = list(
         (await session.scalars(select(Report).order_by(Report.created_at.desc()).limit(100))).all()
     )
@@ -74,8 +75,8 @@ def _schedule_response(request: Request, schedule: ReportSchedule) -> ReportSche
     )
 
 
-@router.post("/generate", response_model=ReportSummary)
-async def generate_report(request: Request, _: AIRateLimitDep) -> ReportSummary:
+@router.post("/generate", response_model=ReportDetail)
+async def generate_report(request: Request, _: AIRateLimitDep) -> ReportDetail:
     settings = request.app.state.settings
     now = datetime.now(UTC)
     await DataRetentionService(
@@ -93,8 +94,11 @@ async def generate_report(request: Request, _: AIRateLimitDep) -> ReportSummary:
             period_start=start,
             period_end=end,
             cadence=ReportCadence.WEEKLY,
+            # A person explicitly requested this snapshot. Keep each on-demand
+            # result, while scheduled jobs remain idempotent per reporting period.
+            idempotent=False,
         )
-    return ReportSummary.model_validate(report)
+    return ReportDetail.model_validate(report)
 
 
 @router.get("/schedule", response_model=ReportScheduleResponse)
@@ -115,7 +119,8 @@ async def update_report_schedule(
 
 
 @router.get("/{report_id}", response_model=ReportDetail)
-async def get_report(report_id: int, session: SessionDep) -> ReportDetail:
+async def get_report(report_id: int, session: SessionDep, response: Response) -> ReportDetail:
+    response.headers["Cache-Control"] = "no-store"
     report = await session.get(Report, report_id)
     if report is None:
         raise AppError(404, "report_not_found", f"Report {report_id} was not found")

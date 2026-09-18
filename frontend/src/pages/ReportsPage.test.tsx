@@ -115,7 +115,10 @@ describe("ReportsPage manual reporting", () => {
       screen.queryByLabelText("Administrator key"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Generated Generated weekly report."),
+      screen.getByText("Generated and opened Generated weekly report."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Generated weekly report" }),
     ).toBeInTheDocument();
   });
 

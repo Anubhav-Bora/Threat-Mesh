@@ -431,6 +431,43 @@ async def test_retrieval_grounded_ai_and_report_routes(client, app, settings) ->
 
 
 @pytest.mark.asyncio
+async def test_general_assistant_uses_project_context_without_querying_live_records(
+    client, app
+) -> None:
+    provider = StaticProvider(
+        json.dumps(
+            {
+                "answer": "Paris is the capital of France.",
+                "cited_record_ids": [],
+            }
+        )
+    )
+    app.state.llm_provider_override = provider
+
+    response = await client.post(
+        "/api/v1/assistant/ask",
+        json={
+            "question": "What is the capital of France?",
+            "mode": "general",
+            "history": [
+                {"role": "user", "content": "Please keep answers concise."},
+                {"role": "assistant", "content": "Understood."},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_mode"] == "general"
+    assert body["answer"] == "Paris is the capital of France."
+    assert body["citations"] == []
+    assert body["grounded_facts"]["retrieved_observation_count"] == 0
+    assert body["grounded_facts"]["included_provenance"] == "none"
+    assert "heuristic-v1" in provider.prompts[0]
+    assert "Please keep answers concise." in provider.prompts[0]
+
+
+@pytest.mark.asyncio
 async def test_assistant_returns_only_server_validated_citations(client, app, settings) -> None:
     await seed_demo(app.state.database.session_factory, settings)
     async with app.state.database.session_factory() as session:

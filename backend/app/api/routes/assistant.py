@@ -19,11 +19,18 @@ async def ask(body: AskRequest, request: Request, _: AIRateLimitDep) -> AskRespo
         provider,
         max_rows=request.app.state.settings.llm_max_context_rows,
     )
-    result = await service.answer(body.question, date_from=body.date_from, date_to=body.date_to)
+    result = await service.answer(
+        body.question,
+        date_from=body.date_from,
+        date_to=body.date_to,
+        mode=body.mode,
+        history=[item.model_dump() for item in body.history],
+    )
     return AskResponse(
         answer=result.text,
         provider=result.provider,
         model=result.model,
+        response_mode=result.response_mode,
         grounded_facts=result.facts,
         citations=[
             AssistantCitation(

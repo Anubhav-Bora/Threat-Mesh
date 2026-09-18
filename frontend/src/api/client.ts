@@ -8,6 +8,8 @@ import {
 } from "../data/mockData";
 import type {
   AssistantAnswer,
+  AssistantHistoryItem,
+  AssistantMode,
   AttackTechnique,
   Campaign,
   DetectionRule,
@@ -1165,7 +1167,13 @@ export const threatApi = {
       summary.affectedCountries = listPayload(countryPayload).length;
       return summary;
     }),
-  ask: async (question: string): Promise<ApiResult<AssistantAnswer>> => {
+  ask: async (
+    question: string,
+    options: {
+      mode?: AssistantMode;
+      history?: AssistantHistoryItem[];
+    } = {},
+  ): Promise<ApiResult<AssistantAnswer>> => {
     if (FORCE_DEMO) {
       return {
         data: demoAssistantAnswer(question),
@@ -1179,7 +1187,11 @@ export const threatApi = {
         "/assistant/ask",
         {
           method: "POST",
-          body: JSON.stringify({ question }),
+          body: JSON.stringify({
+            question,
+            mode: options.mode ?? "auto",
+            history: (options.history ?? []).slice(-8),
+          }),
         },
         105_000,
       );
@@ -1215,6 +1227,13 @@ export const threatApi = {
       const integrityStatus = safeString(get(integrity ?? {}, "status"));
       const data: AssistantAnswer = {
         answer: safeString(payload?.answer),
+        answerMode:
+          safeString(
+            get(payload, "responseMode", "response_mode"),
+            safeString(facts.response_mode),
+          ) === "general"
+            ? "general"
+            : "threatmesh",
         citations,
         retrievedCount:
           safeNumber(
@@ -1288,6 +1307,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       .slice(0, 4);
     return {
       answer: `Across the retrieved records, ${top.map(([country, count]) => `${country} (${count})`).join(", ")} are the most represented approximate locations. These are IP geolocation estimates—not victim locations or confirmed operator locations.`,
+      answerMode: "threatmesh",
       citations: demoIndicators
         .filter((item) => top.some(([country]) => country === item.country))
         .slice(0, 5)
@@ -1312,6 +1332,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       .slice(0, 3);
     return {
       answer: `The strongest observed technique signals are ${top.map((item) => `${item.name} (${item.id}, ${item.observations} observations)`).join("; ")}. Counts reflect mappings in the retrieved OSINT dataset and do not prove execution in any specific environment.`,
+      answerMode: "threatmesh",
       citations: top.map((item) => ({
         id: item.id,
         recordId: `technique:${item.id}`,
@@ -1329,6 +1350,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
       .slice(0, 3);
     return {
       answer: `${top[0]?.label} has the highest average member-IOC confidence at ${top[0]?.averageIocConfidence}%, followed by ${top[1]?.label} at ${top[1]?.averageIocConfidence}%. This metric does not measure cluster or attribution confidence; campaign labels remain correlation hypotheses.`,
+      answerMode: "threatmesh",
       citations: top.map((item) => ({
         id: item.id,
         recordId: `campaign:${item.id}`,
@@ -1353,6 +1375,7 @@ function demoAssistantAnswer(question: string): AssistantAnswer {
     .slice(0, 3);
   return {
     answer: `The retrieved sample is led by ${topFamilies.map(([name, count]) => `${name} (${count} indicators)`).join(", ")}. High-confidence records should be prioritized for review, but no indicator should be deployed to blocking controls without analyst validation.`,
+    answerMode: "threatmesh",
     citations: demoIndicators
       .filter((item) =>
         topFamilies.some(([family]) => family === item.malwareFamily),
