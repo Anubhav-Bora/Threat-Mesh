@@ -11,14 +11,14 @@
 .env.*
 !.env.example
 !**/.env.example
-secrets/
+/secrets/
 *.pem
 *.key
 *.p12
 
 # Local documentation and deployment notes
-docs/
-deploy/gcp/runtime.env.yaml
+/docs/
+/deploy/gcp/runtime.env.yaml
 
 # Dependencies and generated build output
 **/node_modules/
@@ -27,9 +27,9 @@ deploy/gcp/runtime.env.yaml
 **/*.tsbuildinfo
 
 # Test suites, caches, coverage, and temporary databases
-backend/tests/
-frontend/src/**/*.test.ts
-frontend/src/**/*.test.tsx
+/backend/tests/
+/frontend/src/**/*.test.ts
+/frontend/src/**/*.test.tsx
 **/__pycache__/
 **/.pytest_cache/
 **/.pytest-tmp/
@@ -45,9 +45,9 @@ frontend/src/**/*.test.tsx
 **/*.sqlite3
 
 # Runtime exports and miscellaneous local artifacts
-data/
-reports/
-rules/
+/data/
+/reports/
+/rules/
 *.log
 *.pid
 .cache/
