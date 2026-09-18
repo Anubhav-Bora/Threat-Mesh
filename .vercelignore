@@ -1,0 +1,55 @@
+# Version-control and local agent state
+.git/
+.github/
+.agents/
+.codex/
+.vercel/
+.vscode/
+
+# Secrets and developer configuration
+.env
+.env.*
+!.env.example
+!**/.env.example
+secrets/
+*.pem
+*.key
+*.p12
+
+# Local documentation and deployment notes
+docs/
+deploy/gcp/runtime.env.yaml
+
+# Dependencies and generated build output
+**/node_modules/
+**/dist/
+**/.vite/
+**/*.tsbuildinfo
+
+# Test suites, caches, coverage, and temporary databases
+backend/tests/
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+**/__pycache__/
+**/.pytest_cache/
+**/.pytest-tmp/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage*
+**/coverage/
+**/htmlcov/
+**/test-results/
+**/playwright-report/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Runtime exports and miscellaneous local artifacts
+data/
+reports/
+rules/
+*.log
+*.pid
+.cache/
+.tmp/
+tmp/
