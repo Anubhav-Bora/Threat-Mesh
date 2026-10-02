@@ -36,7 +36,22 @@ export default function AttackPage() {
   const query = useTechniques();
   const techniques = useMemo(() => query.data?.data ?? [], [query.data]);
   const [search, setSearch] = useState(citedTechniqueId ?? "");
-  const [observedOnly, setObservedOnly] = useState(true);
+  // Default to "observed only" only when there are actually observed techniques.
+  // Starting with true on an empty/un-analyzed corpus immediately shows the
+  // empty state, which is confusing — the catalog itself is still useful.
+  const hasObserved = useMemo(
+    () => techniques.some((item) => item.observations > 0),
+    [techniques],
+  );
+  const [observedOnly, setObservedOnly] = useState(false);
+  // Flip to observed-only automatically once data loads and observations exist,
+  // but only if the user hasn't manually toggled the control yet.
+  const [userToggledObserved, setUserToggledObserved] = useState(false);
+  useEffect(() => {
+    if (!userToggledObserved && hasObserved) {
+      setObservedOnly(true);
+    }
+  }, [hasObserved, userToggledObserved]);
   const [selected, setSelected] = useState<AttackTechnique | null>(null);
   useEffect(() => {
     setSearch(citedTechniqueId ?? "");
@@ -131,7 +146,10 @@ export default function AttackPage() {
             <button
               type="button"
               className={`observed-toggle ${observedOnly ? "is-active" : ""}`}
-              onClick={() => setObservedOnly((value) => !value)}
+              onClick={() => {
+                setUserToggledObserved(true);
+                setObservedOnly((value) => !value);
+              }}
               aria-pressed={observedOnly}
             >
               <Eye size={14} />
@@ -209,8 +227,12 @@ export default function AttackPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (observedOnly) setObservedOnly(false);
-                  else setSearch("");
+                  if (observedOnly) {
+                    setUserToggledObserved(true);
+                    setObservedOnly(false);
+                  } else {
+                    setSearch("");
+                  }
                 }}
               >
                 {observedOnly ? "Show full catalog" : "Clear search"}

@@ -999,7 +999,10 @@ export const threatApi = {
     withFallback("techniques", demoTechniques, async () => {
       const [catalogPayload, trendingPayload] = await Promise.all([
         request<any>("/techniques?limit=1000"),
-        request<any>("/stats/techniques/trending?days=7&limit=100"),
+        // Use 30-day window so technique observations align with the default
+        // data retention period. A 7-day window produces zero counts when
+        // IOCs are older than a week (e.g. demo data or a slow-moving corpus).
+        request<any>("/stats/techniques/trending?days=30&limit=100"),
       ]);
       const trends = new Map(
         listPayload(trendingPayload).map((item: any) => [
