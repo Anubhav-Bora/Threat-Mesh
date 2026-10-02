@@ -385,6 +385,11 @@ class AskResponse(BaseModel):
     grounded_facts: dict[str, Any]
     citations: list[AssistantCitation] = Field(default_factory=list)
     citation_integrity: CitationIntegrity
+    semantic_faithfulness_warning: str = (
+        "Citation IDs are server-validated against retrieved facts. "
+        "Semantic support of individual claims has not been verified; "
+        "analyst review of cited evidence is required."
+    )
     disclaimer: str = (
         "Citation IDs are server-validated against this response's retrieved facts. "
         "General-mode answers use model knowledge and may not be current; generated wording "

@@ -36,14 +36,21 @@ def test_confidence_breakdown_has_exact_bounded_components_and_timestamp() -> No
 
     assert breakdown.calculated_at == scored_at.astimezone(UTC)
     assert breakdown.formula_version == CONFIDENCE_MODEL_VERSION
+
+    # heuristic-v2: combined_activity (rep × recency), corroboration (log),
+    # feed_hint, analytic_context.
+    # feodo rep=0.95, age=0d → activity = 45.0 × 0.95 × 1.0 = 42.8
+    # feeds=999 capped at 4 → log(4)/log(4) × 20 = 20.0
+    # no hint → 0.0
+    # family+ATT&CK+ASN present (no geo, but ASN set → no enrichment-pending penalty) → 8+7+5 = 20.0
     assert {key: component.score for key, component in components.items()} == {
-        "source_reputation": 38.0,
+        "combined_activity": 42.8,
         "corroboration": 20.0,
-        "recency": 30.0,
-        "context": 10.0,
+        "feed_hint": 0.0,
+        "analytic_context": 20.0,
     }
     assert all(0 <= component.score <= component.max_score for component in breakdown.components)
-    assert breakdown.total == 98.0
+    assert breakdown.total == 82.8
     assert breakdown.total == sum(component.score for component in breakdown.components)
 
 

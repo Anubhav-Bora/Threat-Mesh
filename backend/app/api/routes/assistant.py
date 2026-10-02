@@ -45,4 +45,5 @@ async def ask(body: AskRequest, request: Request, _: AIRateLimitDep) -> AskRespo
             validated_count=result.citation_integrity.validated_count,
             rejected_count=result.citation_integrity.rejected_count,
         ),
+        semantic_faithfulness_warning=result.semantic_faithfulness_warning,
     )

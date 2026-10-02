@@ -65,6 +65,12 @@ class Settings(BaseSettings):
 
     cluster_window_hours: int = Field(default=72, gt=0)
     cluster_max_iocs: int = Field(default=5000, gt=0)
+    # Minimum number of IOCs a Louvain community must contain to be promoted to a
+    # Campaign.  The default of 3 is deliberately higher than the graph-level
+    # minimum of 2 nodes: a two-node community with a single shared attribute is
+    # too weak to be operationally actionable and produces false campaign noise in
+    # sparse corpora.  Raise this value in high-volume deployments.
+    cluster_min_community_size: int = Field(default=3, ge=2)
     minimum_rule_confidence: float = Field(default=70.0, ge=0, le=100)
 
     llm_provider: str = "disabled"

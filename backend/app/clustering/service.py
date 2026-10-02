@@ -30,7 +30,9 @@ class ClusteringService:
             by_id = {ioc.id: ioc for ioc in indicators}
             communities = [
                 members
-                for members in self.detect_communities(graph)
+                for members in self.detect_communities(
+                    graph, min_size=self.settings.cluster_min_community_size
+                )
                 if len({by_id[node_id].is_demo for node_id in members}) == 1
                 and len({self._semantic_identity(by_id[node_id]) for node_id in members}) >= 2
             ]
@@ -114,11 +116,11 @@ class ClusteringService:
         graph.add_edge(left, right, weight=previous + weight)
 
     @staticmethod
-    def detect_communities(graph: nx.Graph) -> list[set[int]]:
+    def detect_communities(graph: nx.Graph, *, min_size: int = 3) -> list[set[int]]:
         if graph.number_of_edges() == 0:
             return []
         communities = nx.community.louvain_communities(graph, weight="weight", seed=42)
-        return [set(community) for community in communities if len(community) >= 2]
+        return [set(community) for community in communities if len(community) >= min_size]
 
     @staticmethod
     def _semantic_identity(ioc: IOC) -> tuple[str, str]:

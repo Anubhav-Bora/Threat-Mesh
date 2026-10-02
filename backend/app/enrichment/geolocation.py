@@ -133,9 +133,12 @@ class EnrichmentService:
                         IOC.latitude.is_(None),
                         IOC.ioc_type == IOCType.IP,
                         or_(
+                            # No cache entry at all — never looked up.
                             GeoCache.ip_address.is_(None),
+                            # Cache entry is stale regardless of success/failure.
                             GeoCache.fetched_at < stale_before,
-                            GeoCache.successful.is_(True),
+                            # Previous lookup failed; retry on next enrichment pass.
+                            GeoCache.successful.is_(False),
                         ),
                     )
                     .order_by(IOC.last_seen.desc())

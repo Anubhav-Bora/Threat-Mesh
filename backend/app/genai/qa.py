@@ -24,12 +24,13 @@ REFERENCE_PATTERN = re.compile(r"\[([a-z][a-z0-9_-]{1,31}:[^\]\r\n]{1,128})\]", 
 THREATMESH_PROJECT_CONTEXT = """ThreatMesh is a defensive cyber-threat-intelligence platform.
 It ingests public OSINT from feeds such as ThreatFox, Feodo Tracker, and URLhaus; normalizes and
 deduplicates IOCs while preserving provenance; enriches literal IPs with approximate geolocation
-and ASN context; and stores durable evidence in PostgreSQL/PostGIS. Its heuristic-v1 confidence
-score is deterministic: source reputation up to 40 points, independent corroboration up to 20,
-recency up to 30, and context up to 10. Campaigns are correlation candidates, not attribution.
-MITRE ATT&CK mappings are family-level context. Sigma and Suricata rules and AI-written reports
-are review-required drafts. Dataset answers use retrieved records with server-validated citation
-IDs. The AI never changes confidence scores or autonomously deploys detections."""
+and ASN context; and stores durable evidence in PostgreSQL/PostGIS. Its heuristic-v2 confidence
+score is deterministic: combined source-reputation × recency up to 45 points, independent
+corroboration (logarithmic) up to 20, feed confidence hint up to 10, and analytic context up to
+25. Campaigns are correlation candidates, not attribution. MITRE ATT&CK mappings are family-level
+context. Sigma and Suricata rules and AI-written reports are review-required drafts. Dataset
+answers use retrieved records with server-validated citation IDs. The AI never changes confidence
+scores or autonomously deploys detections."""
 
 DATA_INTENT_PATTERN = re.compile(
     r"\b(?:threatmesh|ioc|iocs|indicator|indicators|campaign|campaigns|"
@@ -70,6 +71,16 @@ class GroundedAnswer:
     citations: tuple[ValidatedCitation, ...]
     citation_integrity: CitationIntegrity
     response_mode: ResponseMode
+    # Citation validation proves that each [record_id] tag in the answer belonged
+    # to this response's retrieved evidence catalog.  It does NOT prove that every
+    # natural-language sentence is semantically supported by the cited record —
+    # the model may attach a valid ID to a hallucinated claim.  Analyst review of
+    # the cited evidence is required before acting on any generated finding.
+    semantic_faithfulness_warning: str = (
+        "Citation IDs are server-validated against retrieved facts. "
+        "Semantic support of individual claims has not been verified; "
+        "analyst review of cited evidence is required."
+    )
 
 
 class RetrievalQAService:
