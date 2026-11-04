@@ -6,7 +6,6 @@ import {
   Filter,
   Network,
   Search,
-  ShieldAlert,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { CampaignGraph } from "../components/CampaignGraph";
@@ -225,16 +224,6 @@ export default function CampaignsPage() {
                 <span>Last observed</span>
                 <strong>{formatRelative(selected.lastSeen)}</strong>
               </div>
-            </div>
-            <div className="attribution-note">
-              <ShieldAlert size={17} />
-              <p>
-                <strong>Analytical boundary:</strong> grouping reflects shared
-                normalized indicators, or malware-family and ASN co-occurrence
-                within a configured time window—not confirmed common ownership
-                or actor attribution. Time, country, and source alone do not
-                create a relationship.
-              </p>
             </div>
           </article>
 

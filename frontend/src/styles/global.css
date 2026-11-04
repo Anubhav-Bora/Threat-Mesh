@@ -2524,26 +2524,6 @@ input[type="range"] {
   font-size: 10.5px;
   font-weight: 600;
 }
-.attribution-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 9px 10px;
-  border: 1px solid rgb(244 184 96 / 12%);
-  border-radius: 7px;
-  color: var(--amber);
-  background: rgb(244 184 96 / 3%);
-}
-.attribution-note p {
-  margin: 0;
-  color: #907f68;
-  font-size: 8.5px;
-  line-height: 1.5;
-}
-.attribution-note strong {
-  color: #ceb187;
-}
 .graph-panel {
   min-width: 0;
   overflow: hidden;
@@ -4493,14 +4473,18 @@ input[type="range"] {
   }
 }
 .suggestion-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 5px;
-  overflow-x: auto;
   padding: 8px 12px 0;
   border-top: 1px solid var(--border-subtle);
 }
 .suggestion-row button {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -4548,9 +4532,16 @@ input[type="range"] {
   font-size: 7px;
 }
 .chat-composer > div span {
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-composer > div span svg {
+  flex: none;
 }
 .chat-composer button {
   display: grid;
@@ -5441,11 +5432,9 @@ select {
     min-width: 0;
   }
   .suggestion-row {
-    flex-wrap: wrap;
-    overflow-x: visible;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .suggestion-row button {
-    flex: 1 1 calc(50% - 5px);
     text-align: left;
   }
   .campaign-hero {

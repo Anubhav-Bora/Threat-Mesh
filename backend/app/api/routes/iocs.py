@@ -212,9 +212,21 @@ async def _investigate(values: list[str], session: AsyncSession) -> IOCInvestiga
     conditions = []
     for _, ioc_type, canonical, port, key in prepared:
         if ioc_type is IOCType.IP and port is None:
-            conditions.append(and_(IOC.ioc_type == ioc_type, IOC.ioc_value == canonical))
+            conditions.append(
+                and_(
+                    IOC.is_demo.is_(False),
+                    IOC.ioc_type == ioc_type,
+                    IOC.ioc_value == canonical,
+                )
+            )
         else:
-            conditions.append(and_(IOC.ioc_type == ioc_type, IOC.indicator_key == key))
+            conditions.append(
+                and_(
+                    IOC.is_demo.is_(False),
+                    IOC.ioc_type == ioc_type,
+                    IOC.indicator_key == key,
+                )
+            )
     rows = (
         list(
             (

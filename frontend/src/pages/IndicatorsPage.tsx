@@ -23,7 +23,7 @@ const pageSize = 10;
 export default function IndicatorsPage() {
   const [searchParams] = useSearchParams();
   const citedIndicatorId = searchParams.get("ioc") ?? undefined;
-  const query = useIndicators();
+  const query = useIndicators("all", true, 1);
   const citedIndicatorQuery = useIndicator(citedIndicatorId);
   const indicators = useMemo(() => query.data?.data ?? [], [query.data]);
   const sourceTotal = query.data?.total ?? indicators.length;

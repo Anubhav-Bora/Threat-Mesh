@@ -508,7 +508,6 @@ function normalizeCampaign(raw: any, index: number): Campaign {
     },
     summary: safeString(
       get(raw, "summary", "summary_text"),
-      "Analysis pending.",
     ),
   };
 }
@@ -830,29 +829,14 @@ async function withFallback<T>(
     markResource(resource, false);
     return { data, mode: "live" };
   } catch (error) {
-    const gatewayUnavailable =
-      error instanceof ApiRequestError &&
-      [502, 503, 504].includes(error.status);
-    const canUseOfflineDemo =
-      !hasLiveResponse && (error instanceof TypeError || gatewayUnavailable);
-    if (!canUseOfflineDemo) {
-      markError(resource);
-      throw error;
-    }
-    markResource(resource, true);
-    return {
-      data: fallback,
-      mode: "demo",
-      reason:
-        error instanceof Error
-          ? error.message
-          : "ThreatMesh API transport unavailable",
-    };
+    markError(resource);
+    throw error;
   }
 }
 
 async function loadIndicators(
   provenance: "all" | "live" | "demo" = "all",
+  confidenceMin?: number,
 ): Promise<ApiResult<Indicator[]>> {
   if (FORCE_DEMO) {
     return {
@@ -865,9 +849,11 @@ async function loadIndicators(
     };
   }
   try {
-    const provenanceQuery =
-      provenance === "all" ? "" : `&provenance=${provenance}`;
-    const payload = await request<any>(`/iocs?limit=500${provenanceQuery}`);
+    const query = new URLSearchParams({ limit: "500" });
+    if (provenance !== "all") query.set("provenance", provenance);
+    if (confidenceMin !== undefined)
+      query.set("confidence_min", String(confidenceMin));
+    const payload = await request<any>(`/iocs?${query.toString()}`);
     const data = listPayload(payload).map(normalizeIndicator);
     hasLiveResponse = true;
     markResource("indicators", false);
@@ -879,25 +865,8 @@ async function loadIndicators(
       offset: safeNumber(payload?.offset),
     };
   } catch (error) {
-    const gatewayUnavailable =
-      error instanceof ApiRequestError &&
-      [502, 503, 504].includes(error.status);
-    const canUseOfflineDemo =
-      !hasLiveResponse && (error instanceof TypeError || gatewayUnavailable);
-    if (!canUseOfflineDemo) {
-      markError("indicators");
-      throw error;
-    }
-    markResource("indicators", true);
-    return {
-      data: demoIndicators,
-      mode: "demo",
-      reason:
-        error instanceof Error ? error.message : "API transport unavailable",
-      total: demoIndicators.length,
-      limit: demoIndicators.length,
-      offset: 0,
-    };
+    markError("indicators");
+    throw error;
   }
 }
 

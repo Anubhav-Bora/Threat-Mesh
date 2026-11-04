@@ -62,9 +62,12 @@ For Vercel, deploy both layers separately:
 - `frontend/` as a Vite static project.
 - `backend/` as a Python serverless function project using `backend/vercel.json`.
 
-Set `SCHEDULER_ENABLED=false` in backend deployment settings so no built-in cron
-runs in the Vercel-linked deployment path, and trigger weekly drafts from the UI
-button instead.
+The root Vercel project keeps the embedded scheduler off and runs a daily
+pipeline at 02:00 UTC using Vercel Cron. Set `CRON_SECRET` in the Vercel
+production environment; the scheduled request sends it to the protected
+`/api/v1/cron/pipeline` endpoint. The pipeline fetches feeds, enriches new
+indicators, and rebuilds analysis. Weekly report drafts remain available from
+the UI.
 
 ## Quick start
 
@@ -90,6 +93,13 @@ Open:
 The seed command is explicit, deterministic, and idempotent. It never runs by
 itself and never contacts an external feed. Remove the seeded records or use a
 fresh database before evaluating live collection.
+
+The frontend does not fall back to bundled demo records when the API is
+unavailable. To populate the workspace with current public OSINT, configure
+`ABUSECH_AUTH_KEY` in the backend environment, set a non-empty
+`ADMIN_API_KEY`, restart the stack, then use **Settings → Data source
+operations → Run fast refresh**. The live feed records will then be stored in
+the database and used by the investigation workbench.
 
 Seeded rows remain marked as demo data in PostgreSQL. The console explicitly
 labels the corpus as seeded demo, live, mixed, or empty, so a successful HTTP
@@ -204,6 +214,8 @@ DATA_RETENTION_DAYS=30
 
 `backend/vercel.json` already routes all requests to `api/index.py`, so the backend
 serves `/api/v1/...` and report generation remains manual (`POST /api/v1/reports/generate`).
+The daily pipeline cron is configured on the combined root project, not on this
+standalone backend project.
 
 You can also deploy both layers in a single command from repository root using the newly added root `vercel.json`:
 
@@ -215,6 +227,8 @@ In that mode, Vercel uses the root SPA + function pipeline:
 
 - Frontend built from `frontend/package.json` with output `frontend/dist`
 - Backend function served at `/api/*` from `backend/api/index.py`
+- Daily feed and analysis pipeline at 02:00 UTC, authenticated with the Vercel
+  production `CRON_SECRET` environment variable
 
 ### Frontend
 

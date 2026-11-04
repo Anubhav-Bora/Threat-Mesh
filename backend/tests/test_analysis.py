@@ -80,6 +80,12 @@ def test_question_period_understands_supported_relative_time_intents() -> None:
     assert _question_period("today", date_from=None, date_to=end)[0] == datetime(
         2026, 8, 26, tzinfo=UTC
     )
+    assert _question_period("give me todays data", date_from=None, date_to=end)[0] == datetime(
+        2026, 8, 26, tzinfo=UTC
+    )
+    assert _question_period("give me today's data", date_from=None, date_to=end)[0] == datetime(
+        2026, 8, 26, tzinfo=UTC
+    )
     assert _question_period("this month", date_from=None, date_to=end)[0] == datetime(
         2026, 8, 1, tzinfo=UTC
     )

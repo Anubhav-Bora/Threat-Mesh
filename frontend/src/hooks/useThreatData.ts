@@ -17,10 +17,11 @@ export const useApiMode = () =>
 export const useIndicators = (
   provenance: "all" | "live" | "demo" = "all",
   enabled = true,
+  confidenceMin?: number,
 ) =>
   useQuery({
-    queryKey: ["indicators", provenance],
-    queryFn: () => threatApi.indicators(provenance),
+    queryKey: ["indicators", provenance, confidenceMin],
+    queryFn: () => threatApi.indicators(provenance, confidenceMin),
     enabled,
     ...options,
   });

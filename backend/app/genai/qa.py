@@ -38,7 +38,7 @@ DATA_INTENT_PATTERN = re.compile(
     r"confidence|reports?|mitre|att&ck|techniques?|asn|sigma|suricata|"
     r"detection\s+rules?|malware\s+famil(?:y|ies)|infrastructure|"
     r"ips?|ip\s+addresses?|domains?|urls?|hashes?|"
-    r"(?:last|past|this)\s+(?:\d+\s+)?(?:hours?|days?|weeks?|months?)|today)\b",
+    r"(?:last|past|this)\s+(?:\d+\s+)?(?:hours?|days?|weeks?|months?)|today(?:['’]?s)?)\b",
     re.IGNORECASE,
 )
 IOC_VALUE_PATTERN = re.compile(
@@ -416,7 +416,7 @@ def _question_period(
     end = _utc(date_to or datetime.now(UTC))
     if date_from is not None:
         return _utc(date_from), end
-    if re.search(r"\btoday\b", question, re.I):
+    if re.search(r"\btoday(?:['’]?s)?\b", question, re.I):
         return end.replace(hour=0, minute=0, second=0, microsecond=0), end
     if re.search(r"\bthis\s+month\b", question, re.I):
         return end.replace(day=1, hour=0, minute=0, second=0, microsecond=0), end

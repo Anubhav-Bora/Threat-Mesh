@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     admin_api_key: str | None = None
     public_rate_limit_per_minute: int = Field(default=120, gt=0)
     ai_rate_limit_per_minute: int = Field(default=12, gt=0)
+    # Secret used by the Vercel cron endpoint. Set to a long random string in
+    # Vercel environment variables (same value as CRON_SECRET). The /cron/pipeline
+    # endpoint is disabled entirely when this is unset.
+    cron_secret: str | None = None
 
     scheduler_enabled: bool = True
     external_scheduler_enabled: bool = False

@@ -37,15 +37,16 @@ const initialFilters: MapFilters = {
 };
 
 export default function DashboardPage() {
+  const [filters, setFilters] = useState<MapFilters>(initialFilters);
   const summaryQuery = useSummary();
   const requestedProvenance =
     summaryQuery.data?.data.analysisScope === "live" ? "live" : "all";
   const indicatorsQuery = useIndicators(
     requestedProvenance,
     summaryQuery.isSuccess,
+    filters.minConfidence,
   );
   const feedStatusQuery = useFeedStatus();
-  const [filters, setFilters] = useState<MapFilters>(initialFilters);
   const [mode, setMode] = useState<MapMode>("clusters");
   const [selected, setSelected] = useState<Indicator | null>(null);
   const [showFilters, setShowFilters] = useState(false);
